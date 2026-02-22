@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QuantVault — Trading Platform</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0f172a; color: #e2e8f0; min-height: 100vh; }
+    .error-banner {
+      display: none; background: #7f1d1d; color: #fecaca; padding: 12px 20px; text-align: center; font-weight: 500;
+    }
+    .error-banner.show { display: block; }
+    header {
+      background: #1e293b; border-bottom: 1px solid #334155; padding: 16px 24px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;
+    }
+    header h1 { font-size: 1.5rem; font-weight: 700; color: #22c55e; }
+    nav { display: flex; flex-wrap: wrap; gap: 6px; }
+    nav button {
+      padding: 8px 14px; border: 1px solid #475569; background: #334155; color: #cbd5e1; border-radius: 8px; cursor: pointer; font-size: 0.875rem;
+    }
+    nav button:hover { background: #475569; color: #fff; }
+    nav button.active { background: #22c55e; color: #0f172a; border-color: #22c55e; }
+    main { max-width: 1400px; margin: 0 auto; padding: 24px; }
+    .tab-pane { display: none; }
+    .tab-pane.active { display: block; }
+    .card {
+      background: #1e293b; border: 1px solid #334155; border-radius: 12px; padding: 20px; margin-bottom: 20px;
+    }
+    .card h2 { font-size: 1.125rem; margin-bottom: 16px; color: #94a3b8; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+    th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid #334155; }
+    th { color: #94a3b8; font-weight: 600; }
+    tr:hover { background: #334155; }
+    input, select, textarea {
+      padding: 8px 12px; border: 1px solid #475569; background: #0f172a; color: #e2e8f0; border-radius: 6px; font-size: 0.875rem; width: 100%;
+    }
+    input:focus, select:focus, textarea:focus { outline: none; border-color: #22c55e; }
+    button.btn {
+      padding: 8px 16px; border: none; border-radius: 6px; cursor: pointer; font-size: 0.875rem; font-weight: 500;
+    }
+    button.btn-primary { background: #22c55e; color: #0f172a; }
+    button.btn-primary:hover { background: #16a34a; }
+    button.btn-danger { background: #dc2626; color: #fff; }
+    button.btn-danger:hover { background: #b91c1c; }
+    button.btn-secondary { background: #475569; color: #e2e8f0; }
+    button.btn-secondary:hover { background: #64748b; }
+    .form-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; align-items: end; margin-bottom: 16px; }
+    .form-group label { display: block; margin-bottom: 4px; font-size: 0.75rem; color: #94a3b8; }
+    .metrics-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px; }
+    .metric { background: #334155; padding: 16px; border-radius: 8px; }
+    .metric .label { font-size: 0.75rem; color: #94a3b8; }
+    .metric .value { font-size: 1.5rem; font-weight: 700; margin-top: 4px; }
+    .metric .value.positive { color: #22c55e; }
+    .metric .value.negative { color: #ef4444; }
+    .modal-bg { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 100; align-items: center; justify-content: center; padding: 20px; }
+    .modal-bg.show { display: flex; }
+    .modal { background: #1e293b; border: 1px solid #334155; border-radius: 12px; padding: 24px; max-width: 400px; width: 100%; }
+    .modal h3 { margin-bottom: 16px; }
+    .modal .form-group { margin-bottom: 16px; }
+    .modal-actions { display: flex; gap: 12px; margin-top: 20px; }
+    .inline-edit td input { width: 100%; max-width: 120px; }
+    .loading { color: #94a3b8; padding: 20px; text-align: center; }
+  </style>
+</head>
+<body>
+  <div id="errorBanner" class="error-banner"></div>
+  <header>
+    <h1>QuantVault</h1>
+    <nav id="tabNav"></nav>
+  </header>
+  <main>
+    <div id="tab-dashboard" class="tab-pane">
+      <div class="card">
+        <h2>Portfolio Metrics</h2>
+        <button class="btn btn-primary" onclick="refreshDashboard()" style="margin-bottom:16px">Refresh</button>
+        <div id="dashboardMetrics" class="metrics-grid"></div>
+        <div id="dashboardSector" class="card" style="margin-top:16px"></div>
+        <h2 style="margin-top:24px">Top Holdings</h2>
+        <div id="dashboardTopHoldings"></div>
+      </div>
+    </div>
+    <div id="tab-blotter" class="tab-pane">
+      <div class="card">
+        <h2>New Trade</h2>
+        <div class="form-grid">
+          <div class="form-group">
+            <label>Ticker</label>
+            <select id="blotterTicker"></select>
+          </div>
+          <div class="form-group">
+            <label>Side</label>
+            <select id="blotterSide"><option value="BUY">BUY</option><option value="SELL">SELL</option></select>
+          </div>
+          <div class="form-group">
+            <label>Quantity</label>
+            <input type="number" id="blotterQty" min="0.0001" step="any" placeholder="100">
+          </div>
+          <div class="form-group">
+            <label>Price</label>
+            <input type="number" id="blotterPrice" min="0" step="0.01" placeholder="0.00">
+          </div>
+          <div class="form-group">
+            <label>Trader</label>
+            <select id="blotterTrader"></select>
+          </div>
+          <div class="form-group">
+            <label>Strategy</label>
+            <input type="text" id="blotterStrategy" placeholder="Optional">
+          </div>
+          <div class="form-group">
+            <label>Notes</label>
+            <input type="text" id="blotterNotes" placeholder="Optional">
+          </div>
+          <div class="form-group">
+            <button class="btn btn-primary" onclick="submitTrade()">Submit Trade</button>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <h2>Active Trades (editable)</h2>
+        <button class="btn btn-secondary" onclick="refreshBlotter()" style="margin-bottom:12px">Refresh</button>
+        <div id="blotterTable"></div>
+      </div>
+    </div>
+    <div id="tab-holdings" class="tab-pane">
+      <div class="card">
+        <h2>Holdings (computed from active trades)</h2>
+        <button class="btn btn-primary" onclick="refreshHoldings()" style="margin-bottom:16px">Refresh</button>
+        <div id="holdingsTable"></div>
+      </div>
+    </div>
+    <div id="tab-compliance" class="tab-pane">
+      <div class="card">
+        <h2>Active Trades for Review</h2>
+        <button class="btn btn-secondary" onclick="refreshCompliance()" style="margin-bottom:12px">Refresh</button>
+        <div id="complianceActiveTable"></div>
+      </div>
+      <div class="card">
+        <h2>Rejected Trades</h2>
+        <div id="complianceRejectedTable"></div>
+      </div>
+    </div>
+    <div id="tab-securities" class="tab-pane">
+      <div class="card">
+        <h2>Add Security</h2>
+        <div class="form-grid">
+          <div class="form-group"><label>Ticker</label><input type="text" id="secTicker" placeholder="AAPL"></div>
+          <div class="form-group"><label>Name</label><input type="text" id="secName" placeholder="Apple Inc"></div>
+          <div class="form-group"><label>Sector</label><input type="text" id="secSector" placeholder="Technology"></div>
+          <div class="form-group"><label>Price</label><input type="number" id="secPrice" step="0.01" placeholder="0"></div>
+          <div class="form-group"><label>Shares Outstanding</label><input type="number" id="secShares" step="1" placeholder="Optional"></div>
+          <div class="form-group"><button class="btn btn-primary" onclick="addSecurity()">Add</button></div>
+        </div>
+      </div>
+      <div class="card">
+        <h2>Securities</h2>
+        <button class="btn btn-secondary" onclick="refreshSecurities()" style="margin-bottom:12px">Refresh</button>
+        <div id="securitiesTable"></div>
+      </div>
+    </div>
+    <div id="tab-traders" class="tab-pane">
+      <div class="card">
+        <h2>Add Trader</h2>
+        <div class="form-grid">
+          <div class="form-group"><label>Name</label><input type="text" id="traderName" placeholder="Name"></div>
+          <div class="form-group"><label>Desk</label><input type="text" id="traderDesk" placeholder="Desk"></div>
+          <div class="form-group"><label>Email</label><input type="email" id="traderEmail" placeholder="Email"></div>
+          <div class="form-group"><button class="btn btn-primary" onclick="addTrader()">Add</button></div>
+        </div>
+      </div>
+      <div class="card">
+        <h2>Traders</h2>
+        <button class="btn btn-secondary" onclick="refreshTraders()" style="margin-bottom:12px">Refresh</button>
+        <div id="tradersTable"></div>
+      </div>
+    </div>
+    <div id="tab-restricted" class="tab-pane">
+      <div class="card">
+        <h2>Add to Restricted List</h2>
+        <div class="form-grid">
+          <div class="form-group"><label>Ticker</label><select id="restTicker"></select></div>
+          <div class="form-group"><label>Reason</label><input type="text" id="restReason" placeholder="Reason"></div>
+          <div class="form-group"><label>Added By</label><input type="text" id="restAddedBy" placeholder="Name"></div>
+          <div class="form-group"><button class="btn btn-primary" onclick="addRestricted()">Add</button></div>
+        </div>
+      </div>
+      <div class="card">
+        <h2>Restricted List</h2>
+        <button class="btn btn-secondary" onclick="refreshRestricted()" style="margin-bottom:12px">Refresh</button>
+        <div id="restrictedTable"></div>
+      </div>
+    </div>
+    <div id="tab-audit" class="tab-pane">
+      <div class="card">
+        <h2>Audit Log</h2>
+        <button class="btn btn-secondary" onclick="refreshAudit()" style="margin-bottom:12px">Refresh</button>
+        <div id="auditTable"></div>
+      </div>
+    </div>
+  </main>
+  <div id="rejectModal" class="modal-bg">
+    <div class="modal">
+      <h3>Reject Trade</h3>
+      <div class="form-group"><label>Rejection Reason</label><textarea id="rejectReason" rows="3" placeholder="Reason"></textarea></div>
+      <div class="modal-actions">
+        <button class="btn btn-danger" onclick="confirmReject()">Reject</button>
+        <button class="btn btn-secondary" onclick="hideRejectModal()">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    var API_BASE = 'http://localhost:8000';
+    var state = { securities: [], traders: [], metrics: null, holdings: [], tradesActive: [], tradesRejected: [], restricted: [], audit: [], editingTradeId: null, editingSecId: null, editingTraderId: null, rejectTradeId: null };
+
+    function showError(msg) {
+      var el = document.getElementById('errorBanner');
+      el.textContent = msg;
+      el.classList.add('show');
+      setTimeout(function() { el.classList.remove('show'); }, 8000);
+    }
+    function hideError() { document.getElementById('errorBanner').classList.remove('show'); }
+
+    function safeFetch(url, opts) {
+      opts = opts || {};
+      return fetch(url, opts).then(function(r) {
+        if (!r.ok) return r.json().then(function(d) { throw new Error(d.detail || r.statusText); }).catch(function(e) { if (e.message) throw e; throw new Error(r.statusText); });
+        return r.json();
+      }).catch(function(e) { showError('API error: ' + (e.message || e)); throw e; });
+    }
+
+    function renderTabs() {
+      var tabs = ['Dashboard', 'Blotter', 'Holdings', 'Compliance', 'Securities', 'Traders', 'Restricted', 'Audit'];
+      var ids = ['dashboard', 'blotter', 'holdings', 'compliance', 'securities', 'traders', 'restricted', 'audit'];
+      var nav = document.getElementById('tabNav');
+      nav.innerHTML = '';
+      tabs.forEach(function(t, i) {
+        var btn = document.createElement('button');
+        btn.textContent = t;
+        btn.className = 'tab-btn' + (i === 0 ? ' active' : '');
+        btn.onclick = function() { switchTab(ids[i]); };
+        nav.appendChild(btn);
+      });
+    }
+    function switchTab(id) {
+      document.querySelectorAll('.tab-pane').forEach(function(p) { p.classList.remove('active'); });
+      document.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.remove('active'); });
+      var pane = document.getElementById('tab-' + id);
+      if (pane) pane.classList.add('active');
+      var idx = ['dashboard','blotter','holdings','compliance','securities','traders','restricted','audit'].indexOf(id);
+      var btns = document.querySelectorAll('.tab-btn');
+      if (btns[idx]) btns[idx].classList.add('active');
+      if (id === 'dashboard') refreshDashboard();
+      else if (id === 'blotter') refreshBlotter();
+      else if (id === 'holdings') refreshHoldings();
+      else if (id === 'compliance') refreshCompliance();
+      else if (id === 'securities') refreshSecurities();
+      else if (id === 'traders') refreshTraders();
+      else if (id === 'restricted') refreshRestricted();
+      else if (id === 'audit') refreshAudit();
+    }
+
+    function refreshDashboard() {
+      var el = document.getElementById('dashboardMetrics');
+      el.innerHTML = '<div class="loading">Loading...</div>';
+      safeFetch(API_BASE + '/api/metrics').then(function(m) {
+        state.metrics = m;
+        el.innerHTML = '<div class="metric"><div class="label">Total Market Value</div><div class="value">$' + Number(m.total_market_value).toLocaleString(undefined, {minimumFractionDigits: 2}) + '</div></div>' +
+          '<div class="metric"><div class="label">Unrealized P&L</div><div class="value ' + (m.total_unrealized_pnl >= 0 ? 'positive' : 'negative') + '">$' + Number(m.total_unrealized_pnl).toLocaleString(undefined, {minimumFractionDigits: 2}) + '</div></div>' +
+          '<div class="metric"><div class="label">Positions</div><div class="value">' + m.number_of_positions + '</div></div>' +
+          '<div class="metric"><div class="label">Trades (Active / Rejected / Total)</div><div class="value">' + m.trades_active_count + ' / ' + m.trades_rejected_count + ' / ' + m.trades_total_count + '</div></div>';
+        var sb = document.getElementById('dashboardSector');
+        var sbData = m.sector_breakdown || {};
+        var total = m.total_market_value || 1;
+        sb.innerHTML = '<h2>Sector Breakdown</h2><table><thead><tr><th>Sector</th><th>Value</th><th>%</th></tr></thead><tbody>' +
+          Object.keys(sbData).map(function(s) { var v = sbData[s]; return '<tr><td>' + s + '</td><td>$' + Number(v).toLocaleString(undefined, {minimumFractionDigits: 2}) + '</td><td>' + (100 * v / total).toFixed(1) + '%</td></tr>'; }).join('') + '</tbody></table>';
+        var top = document.getElementById('dashboardTopHoldings');
+        top.innerHTML = '<table><thead><tr><th>Ticker</th><th>Net Qty</th><th>Avg Cost</th><th>Price</th><th>Market Value</th><th>Unrealized P&L</th></tr></thead><tbody>' +
+          (m.top_holdings || []).map(function(h) {
+            return '<tr><td>' + h.ticker + '</td><td>' + h.net_quantity + '</td><td>' + h.avg_cost + '</td><td>' + h.current_price + '</td><td>$' + Number(h.market_value).toLocaleString(undefined, {minimumFractionDigits: 2}) + '</td><td class="' + (h.unrealized_pnl >= 0 ? 'positive' : 'negative') + '">$' + Number(h.unrealized_pnl).toLocaleString(undefined, {minimumFractionDigits: 2}) + '</td></tr>';
+          }).join('') + '</tbody></table>';
+      }).catch(function() { el.innerHTML = '<div class="loading">Failed to load metrics.</div>'; });
+    }
+
+    function fillBlotterDropdowns() {
+      safeFetch(API_BASE + '/api/securities').then(function(list) {
+        state.securities = list;
+        var sel = document.getElementById('blotterTicker');
+        sel.innerHTML = '<option value="">Select ticker</option>' + list.map(function(s) { return '<option value="' + s.ticker + '" data-price="' + s.price + '">' + s.ticker + ' — ' + s.name + '</option>'; }).join('');
+        sel.onchange = function() {
+          var opt = sel.options[sel.selectedIndex];
+          if (opt && opt.dataset.price) document.getElementById('blotterPrice').value = opt.dataset.price;
+        };
+      }).catch(function() {});
+      safeFetch(API_BASE + '/api/traders').then(function(list) {
+        state.traders = list;
+        document.getElementById('blotterTrader').innerHTML = '<option value="">Select trader</option>' + list.map(function(t) { return '<option value="' + t.name + '">' + t.name + ' (' + (t.desk || '') + ')</option>'; }).join('');
+      }).catch(function() {});
+    }
+    function submitTrade() {
+      var ticker = document.getElementById('blotterTicker').value;
+      var side = document.getElementById('blotterSide').value;
+      var qty = parseFloat(document.getElementById('blotterQty').value);
+      var price = parseFloat(document.getElementById('blotterPrice').value);
+      var trader = document.getElementById('blotterTrader').value;
+      if (!ticker || !trader || !qty || qty <= 0 || !price || price <= 0) { showError('Fill ticker, trader, quantity and price.'); return; }
+      safeFetch(API_BASE + '/api/trades', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ticker: ticker, side: side, quantity: qty, price: price, trader_name: trader, strategy: document.getElementById('blotterStrategy').value || null, notes: document.getElementById('blotterNotes').value || null })
+      }).then(function() {
+        document.getElementById('blotterQty').value = '';
+        document.getElementById('blotterPrice').value = '';
+        document.getElementById('blotterStrategy').value = '';
+        document.getElementById('blotterNotes').value = '';
+        refreshBlotter();
+        hideError();
+      }).catch(function() {});
+    }
+    function refreshBlotter() {
+      fillBlotterDropdowns();
+      var el = document.getElementById('blotterTable');
+      el.innerHTML = '<div class="loading">Loading...</div>';
+      safeFetch(API_BASE + '/api/trades?status=ACTIVE').then(function(list) {
+        state.tradesActive = list;
+        if (list.length === 0) { el.innerHTML = '<p class="loading">No active trades.</p>'; return; }
+        el.innerHTML = '<table><thead><tr><th>Id</th><th>Ticker</th><th>Side</th><th>Qty</th><th>Price</th><th>Trader</th><th>Strategy</th><th>Notes</th><th>Actions</th></tr></thead><tbody>' +
+          list.map(function(t) {
+            if (state.editingTradeId === t.id) {
+              return '<tr data-id="' + t.id + '"><td>' + t.id + '</td><td><input value="' + t.ticker + '" id="eTicker"></td><td><select id="eSide"><option value="BUY"' + (t.side==='BUY'?' selected':'') + '>BUY</option><option value="SELL"' + (t.side==='SELL'?' selected':'') + '>SELL</option></select></td><td><input type="number" value="' + t.quantity + '" id="eQty"></td><td><input type="number" value="' + t.price + '" id="ePrice"></td><td><input value="' + t.trader_name + '" id="eTrader"></td><td><input value="' + (t.strategy||'') + '" id="eStrategy"></td><td><input value="' + (t.notes||'') + '" id="eNotes"></td><td><button class="btn btn-primary" onclick="saveEdit(' + t.id + ')">Save</button> <button class="btn btn-secondary" onclick="cancelEdit()">Cancel</button></td></tr>';
+            }
+            return '<tr data-id="' + t.id + '"><td>' + t.id + '</td><td>' + t.ticker + '</td><td>' + t.side + '</td><td>' + t.quantity + '</td><td>' + t.price + '</td><td>' + t.trader_name + '</td><td>' + (t.strategy||'') + '</td><td>' + (t.notes||'') + '</td><td><button class="btn btn-secondary" onclick="startEdit(' + t.id + ')">Edit</button> <button class="btn btn-danger" onclick="deleteTrade(' + t.id + ')">Delete</button></td></tr>';
+          }).join('') + '</tbody></table>';
+      }).catch(function() { el.innerHTML = '<p class="loading">Failed to load trades.</p>'; });
+    }
+    function startEdit(id) { state.editingTradeId = id; refreshBlotter(); }
+    function cancelEdit() { state.editingTradeId = null; refreshBlotter(); }
+    function saveEdit(id) {
+      var ticker = document.getElementById('eTicker').value;
+      var side = document.getElementById('eSide').value;
+      var qty = parseFloat(document.getElementById('eQty').value);
+      var price = parseFloat(document.getElementById('ePrice').value);
+      var trader = document.getElementById('eTrader').value;
+      safeFetch(API_BASE + '/api/trades/' + id, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ticker: ticker, side: side, quantity: qty, price: price, trader_name: trader, strategy: document.getElementById('eStrategy').value || null, notes: document.getElementById('eNotes').value || null })
+      }).then(function() { state.editingTradeId = null; refreshBlotter(); hideError(); }).catch(function() {});
+    }
+    function deleteTrade(id) {
+      if (!confirm('Delete this trade? This cannot be undone.')) return;
+      safeFetch(API_BASE + '/api/trades/' + id, { method: 'DELETE' }).then(function() { refreshBlotter(); hideError(); }).catch(function() {});
+    }
+
+    function refreshHoldings() {
+      var el = document.getElementById('holdingsTable');
+      el.innerHTML = '<div class="loading">Loading...</div>';
+      safeFetch(API_BASE + '/api/holdings').then(function(list) {
+        state.holdings = list;
+        if (list.length === 0) { el.innerHTML = '<p class="loading">No holdings (no active trades or all flat).</p>'; return; }
+        el.innerHTML = '<table><thead><tr><th>Ticker</th><th>Net Quantity</th><th>Avg Cost</th><th>Current Price</th><th>Market Value</th><th>Unrealized P&L</th></tr></thead><tbody>' +
+          list.map(function(h) {
+            return '<tr><td>' + h.ticker + '</td><td>' + h.net_quantity + '</td><td>' + h.avg_cost + '</td><td>' + h.current_price + '</td><td>$' + Number(h.market_value).toLocaleString(undefined, {minimumFractionDigits: 2}) + '</td><td class="' + (h.unrealized_pnl >= 0 ? 'positive' : 'negative') + '">$' + Number(h.unrealized_pnl).toLocaleString(undefined, {minimumFractionDigits: 2}) + '</td></tr>';
+          }).join('') + '</tbody></table>';
+      }).catch(function() { el.innerHTML = '<p class="loading">Failed to load holdings.</p>'; });
+    }
+
+    function refreshCompliance() {
+      var elActive = document.getElementById('complianceActiveTable');
+      var elRej = document.getElementById('complianceRejectedTable');
+      elActive.innerHTML = '<div class="loading">Loading...</div>';
+      elRej.innerHTML = '<div class="loading">Loading...</div>';
+      safeFetch(API_BASE + '/api/trades?status=ACTIVE').then(function(list) {
+        state.tradesActive = list;
+        if (list.length === 0) elActive.innerHTML = '<p class="loading">No active trades for review.</p>';
+        else elActive.innerHTML = '<table><thead><tr><th>Id</th><th>Ticker</th><th>Side</th><th>Qty</th><th>Price</th><th>Trader</th><th>Actions</th></tr></thead><tbody>' +
+          list.map(function(t) { return '<tr><td>' + t.id + '</td><td>' + t.ticker + '</td><td>' + t.side + '</td><td>' + t.quantity + '</td><td>' + t.price + '</td><td>' + t.trader_name + '</td><td><button class="btn btn-danger" onclick="openRejectModal(' + t.id + ')">Reject</button></td></tr>'; }).join('') + '</tbody></table>';
+      }).catch(function() { elActive.innerHTML = '<p class="loading">Failed to load.</p>'; });
+      safeFetch(API_BASE + '/api/trades?status=REJECTED').then(function(list) {
+        state.tradesRejected = list;
+        if (list.length === 0) elRej.innerHTML = '<p class="loading">No rejected trades.</p>';
+        else elRej.innerHTML = '<table><thead><tr><th>Id</th><th>Ticker</th><th>Side</th><th>Qty</th><th>Price</th><th>Trader</th><th>Rejection Reason</th><th>Rejected At</th><th>Actions</th></tr></thead><tbody>' +
+          list.map(function(t) { return '<tr><td>' + t.id + '</td><td>' + t.ticker + '</td><td>' + t.side + '</td><td>' + t.quantity + '</td><td>' + t.price + '</td><td>' + t.trader_name + '</td><td>' + (t.rejection_reason||'') + '</td><td>' + (t.rejected_at||'') + '</td><td><button class="btn btn-primary" onclick="reinstateTrade(' + t.id + ')">Reinstate</button></td></tr>'; }).join('') + '</tbody></table>';
+      }).catch(function() { elRej.innerHTML = '<p class="loading">Failed to load.</p>'; });
+    }
+    function openRejectModal(id) { state.rejectTradeId = id; document.getElementById('rejectReason').value = ''; document.getElementById('rejectModal').classList.add('show'); }
+    function hideRejectModal() { state.rejectTradeId = null; document.getElementById('rejectModal').classList.remove('show'); }
+    function confirmReject() {
+      var id = state.rejectTradeId;
+      var reason = document.getElementById('rejectReason').value.trim();
+      if (!reason) { showError('Enter a rejection reason.'); return; }
+      safeFetch(API_BASE + '/api/trades/' + id + '/reject', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rejection_reason: reason })
+      }).then(function() { hideRejectModal(); refreshCompliance(); hideError(); }).catch(function() {});
+    }
+    function reinstateTrade(id) {
+      safeFetch(API_BASE + '/api/trades/' + id + '/reinstate', { method: 'POST' }).then(function() { refreshCompliance(); hideError(); }).catch(function() {});
+    }
+
+    function addSecurity() {
+      var ticker = document.getElementById('secTicker').value.trim().toUpperCase();
+      var name = document.getElementById('secName').value.trim();
+      var sector = document.getElementById('secSector').value.trim();
+      var price = parseFloat(document.getElementById('secPrice').value);
+      var shares = document.getElementById('secShares').value;
+      if (!ticker || !name || isNaN(price)) { showError('Ticker, name and price required.'); return; }
+      safeFetch(API_BASE + '/api/securities', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ticker: ticker, name: name, sector: sector || null, price: price, shares_outstanding: shares ? parseFloat(shares) : null })
+      }).then(function() {
+        document.getElementById('secTicker').value = ''; document.getElementById('secName').value = ''; document.getElementById('secSector').value = ''; document.getElementById('secPrice').value = ''; document.getElementById('secShares').value = '';
+        refreshSecurities(); hideError();
+      }).catch(function() {});
+    }
+    function refreshSecurities() {
+      var el = document.getElementById('securitiesTable');
+      el.innerHTML = '<div class="loading">Loading...</div>';
+      safeFetch(API_BASE + '/api/securities').then(function(list) {
+        state.securities = list;
+        if (list.length === 0) { el.innerHTML = '<p class="loading">No securities.</p>'; state.editingSecId = null; return; }
+        el.innerHTML = '<table><thead><tr><th>Id</th><th>Ticker</th><th>Name</th><th>Sector</th><th>Price</th><th>Shares Out.</th><th>Actions</th></tr></thead><tbody>' +
+          list.map(function(s) {
+            if (state.editingSecId === s.id) {
+              return '<tr data-id="' + s.id + '"><td>' + s.id + '</td><td><input value="' + s.ticker + '" id="sTicker" style="max-width:100px"></td><td><input value="' + s.name + '" id="sName"></td><td><input value="' + (s.sector||'') + '" id="sSector"></td><td><input type="number" value="' + s.price + '" id="sPrice" step="0.01"></td><td><input type="number" value="' + (s.shares_outstanding != null ? s.shares_outstanding : '') + '" id="sShares" placeholder="Optional"></td><td><button class="btn btn-primary" onclick="saveSecurityEdit(' + s.id + ')">Save</button> <button class="btn btn-secondary" onclick="cancelSecurityEdit()">Cancel</button></td></tr>';
+            }
+            return '<tr><td>' + s.id + '</td><td>' + s.ticker + '</td><td>' + s.name + '</td><td>' + (s.sector||'') + '</td><td>' + s.price + '</td><td>' + (s.shares_outstanding != null ? s.shares_outstanding : '') + '</td><td><button class="btn btn-secondary" onclick="startSecurityEdit(' + s.id + ')">Edit</button> <button class="btn btn-danger" onclick="deleteSecurity(' + s.id + ')">Delete</button></td></tr>';
+          }).join('') + '</tbody></table>';
+      }).catch(function() { el.innerHTML = '<p class="loading">Failed to load.</p>'; });
+    }
+    function startSecurityEdit(id) { state.editingSecId = id; refreshSecurities(); }
+    function cancelSecurityEdit() { state.editingSecId = null; refreshSecurities(); }
+    function saveSecurityEdit(id) {
+      var ticker = document.getElementById('sTicker').value.trim().toUpperCase();
+      var name = document.getElementById('sName').value.trim();
+      var sector = document.getElementById('sSector').value.trim();
+      var price = parseFloat(document.getElementById('sPrice').value);
+      var shares = document.getElementById('sShares').value;
+      if (!ticker || !name || isNaN(price)) { showError('Ticker, name and price required.'); return; }
+      safeFetch(API_BASE + '/api/securities/' + id, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ticker: ticker, name: name, sector: sector || null, price: price, shares_outstanding: shares ? parseFloat(shares) : null })
+      }).then(function() { state.editingSecId = null; refreshSecurities(); hideError(); }).catch(function() {});
+    }
+    function deleteSecurity(id) {
+      if (!confirm('Delete this security?')) return;
+      safeFetch(API_BASE + '/api/securities/' + id, { method: 'DELETE' }).then(function() { refreshSecurities(); hideError(); }).catch(function() {});
+    }
+
+    function addTrader() {
+      var name = document.getElementById('traderName').value.trim();
+      var desk = document.getElementById('traderDesk').value.trim();
+      var email = document.getElementById('traderEmail').value.trim();
+      if (!name) { showError('Name required.'); return; }
+      safeFetch(API_BASE + '/api/traders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: name, desk: desk || null, email: email || null })
+      }).then(function() {
+        document.getElementById('traderName').value = ''; document.getElementById('traderDesk').value = ''; document.getElementById('traderEmail').value = '';
+        refreshTraders(); hideError();
+      }).catch(function() {});
+    }
+    function refreshTraders() {
+      var el = document.getElementById('tradersTable');
+      el.innerHTML = '<div class="loading">Loading...</div>';
+      safeFetch(API_BASE + '/api/traders').then(function(list) {
+        state.traders = list;
+        if (list.length === 0) { el.innerHTML = '<p class="loading">No traders.</p>'; state.editingTraderId = null; return; }
+        el.innerHTML = '<table><thead><tr><th>Id</th><th>Name</th><th>Desk</th><th>Email</th><th>Actions</th></tr></thead><tbody>' +
+          list.map(function(t) {
+            if (state.editingTraderId === t.id) {
+              return '<tr data-id="' + t.id + '"><td>' + t.id + '</td><td><input value="' + t.name + '" id="trName"></td><td><input value="' + (t.desk||'') + '" id="trDesk"></td><td><input value="' + (t.email||'') + '" id="trEmail"></td><td><button class="btn btn-primary" onclick="saveTraderEdit(' + t.id + ')">Save</button> <button class="btn btn-secondary" onclick="cancelTraderEdit()">Cancel</button></td></tr>';
+            }
+            return '<tr><td>' + t.id + '</td><td>' + t.name + '</td><td>' + (t.desk||'') + '</td><td>' + (t.email||'') + '</td><td><button class="btn btn-secondary" onclick="startTraderEdit(' + t.id + ')">Edit</button> <button class="btn btn-danger" onclick="deleteTrader(' + t.id + ')">Delete</button></td></tr>';
+          }).join('') + '</tbody></table>';
+      }).catch(function() { el.innerHTML = '<p class="loading">Failed to load.</p>'; });
+    }
+    function startTraderEdit(id) { state.editingTraderId = id; refreshTraders(); }
+    function cancelTraderEdit() { state.editingTraderId = null; refreshTraders(); }
+    function saveTraderEdit(id) {
+      var name = document.getElementById('trName').value.trim();
+      var desk = document.getElementById('trDesk').value.trim();
+      var email = document.getElementById('trEmail').value.trim();
+      if (!name) { showError('Name required.'); return; }
+      safeFetch(API_BASE + '/api/traders/' + id, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: name, desk: desk || null, email: email || null })
+      }).then(function() { state.editingTraderId = null; refreshTraders(); hideError(); }).catch(function() {});
+    }
+    function deleteTrader(id) {
+      if (!confirm('Delete this trader?')) return;
+      safeFetch(API_BASE + '/api/traders/' + id, { method: 'DELETE' }).then(function() { refreshTraders(); hideError(); }).catch(function() {});
+    }
+
+    function addRestricted() {
+      var ticker = document.getElementById('restTicker').value;
+      var reason = document.getElementById('restReason').value.trim();
+      var addedBy = document.getElementById('restAddedBy').value.trim();
+      if (!ticker) { showError('Select a ticker.'); return; }
+      safeFetch(API_BASE + '/api/restricted', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ticker: ticker, reason: reason || null, added_by: addedBy || null })
+      }).then(function() {
+        document.getElementById('restReason').value = ''; document.getElementById('restAddedBy').value = '';
+        refreshRestricted(); hideError();
+      }).catch(function() {});
+    }
+    function refreshRestricted() {
+      safeFetch(API_BASE + '/api/securities').then(function(secs) {
+        state.securities = secs;
+        var sel = document.getElementById('restTicker');
+        sel.innerHTML = '<option value="">Select ticker</option>' + secs.map(function(s) { return '<option value="' + s.ticker + '">' + s.ticker + '</option>'; }).join('');
+      }).catch(function() {});
+      var el = document.getElementById('restrictedTable');
+      el.innerHTML = '<div class="loading">Loading...</div>';
+      safeFetch(API_BASE + '/api/restricted').then(function(list) {
+        state.restricted = list;
+        if (list.length === 0) { el.innerHTML = '<p class="loading">No restricted tickers.</p>'; return; }
+        el.innerHTML = '<table><thead><tr><th>Id</th><th>Ticker</th><th>Reason</th><th>Added By</th><th>Created</th><th>Actions</th></tr></thead><tbody>' +
+          list.map(function(r) { return '<tr><td>' + r.id + '</td><td>' + r.ticker + '</td><td>' + (r.reason||'') + '</td><td>' + (r.added_by||'') + '</td><td>' + (r.created_at||'') + '</td><td><button class="btn btn-danger" onclick="deleteRestricted(' + r.id + ')">Remove</button></td></tr>'; }).join('') + '</tbody></table>';
+      }).catch(function() { el.innerHTML = '<p class="loading">Failed to load.</p>'; });
+    }
+    function deleteRestricted(id) {
+      safeFetch(API_BASE + '/api/restricted/' + id, { method: 'DELETE' }).then(function() { refreshRestricted(); hideError(); }).catch(function() {});
+    }
+
+    function refreshAudit() {
+      var el = document.getElementById('auditTable');
+      el.innerHTML = '<div class="loading">Loading...</div>';
+      safeFetch(API_BASE + '/api/audit').then(function(list) {
+        state.audit = list;
+        if (list.length === 0) { el.innerHTML = '<p class="loading">No audit entries.</p>'; return; }
+        el.innerHTML = '<table><thead><tr><th>Timestamp</th><th>Action</th><th>Entity Type</th><th>Entity Id</th><th>Details</th></tr></thead><tbody>' +
+          list.map(function(a) { return '<tr><td>' + (a.timestamp||'') + '</td><td>' + (a.action||'') + '</td><td>' + (a.entity_type||'') + '</td><td>' + (a.entity_id!=null ? a.entity_id : '') + '</td><td>' + (a.details||'') + '</td></tr>'; }).join('') + '</tbody></table>';
+      }).catch(function() { el.innerHTML = '<p class="loading">Failed to load.</p>'; });
+    }
+
+    function boot() {
+      renderTabs();
+      document.getElementById('tab-dashboard').classList.add('active');
+      refreshDashboard();
+    }
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+    else boot();
+  </script>
+</body>
+</html>
