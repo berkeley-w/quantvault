@@ -19,6 +19,8 @@ from models import (
     SessionLocal,
     init_db,
 )
+from services import get_quote
+import time
 
 load_dotenv()
 
@@ -36,7 +38,6 @@ app.add_middleware(
 )
 
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
-init_db()
 
 def get_db():
     db = SessionLocal()
@@ -527,3 +528,113 @@ def get_metrics(db: Session = Depends(get_db)):
         "trades_rejected_count": rejected_count,
         "trades_total_count": total_trades,
     }
+
+
+# ============== Prices & Portfolio Performance (Alpha Vantage) ==============
+@app.get("/api/prices/{ticker}")
+def get_price(ticker: str, db: Session = Depends(get_db)):
+    """
+    Return a cached or fresh Alpha Vantage quote for a single ticker.
+    Never raises; on error returns fields with None.
+    """
+    quote = get_quote(ticker)
+    if not quote:
+        return {
+            "ticker": ticker.upper(),
+            "current_price": None,
+            "change": None,
+            "change_percent": None,
+            "volume": None,
+        }
+    return quote
+
+
+@app.post("/api/prices/refresh")
+def refresh_all_prices(db: Session = Depends(get_db)):
+    """
+    Fetch quotes for all securities and update their stored price.
+    Uses a 12-second delay between calls to respect the Alpha Vantage free-tier
+    rate limit (5 calls/minute, 25/day).
+    """
+    securities = db.query(Security).order_by(Security.ticker).all()
+    updated = []
+    failed = []
+    for idx, sec in enumerate(securities):
+        quote = get_quote(sec.ticker)
+        if quote and quote.get("current_price") is not None:
+            sec.price = float(quote["current_price"])
+            updated.append(sec.ticker)
+        else:
+            failed.append(sec.ticker)
+        # Avoid sleeping after the very last item
+        if idx < len(securities) - 1:
+            time.sleep(12)
+    db.commit()
+    audit(
+        db,
+        "SECURITIES_PRICES_REFRESHED",
+        "security",
+        None,
+        f"Refreshed prices for {len(updated)} securities; {len(failed)} failed",
+    )
+    return {
+        "updated_count": len(updated),
+        "failed_count": len(failed),
+        "updated_tickers": updated,
+        "failed_tickers": failed,
+    }
+
+
+@app.get("/api/portfolio/performance")
+def get_portfolio_performance(db: Session = Depends(get_db)):
+    """
+    Calculate portfolio performance from all ACTIVE trades using current
+    prices stored on the Security table.
+    """
+    holdings_data = _compute_holdings(db)
+    breakdown = []
+    total_market_value = 0.0
+    total_cost_basis = 0.0
+
+    for h in holdings_data:
+        net_qty = h["net_quantity"]
+        cost_basis = net_qty * h["avg_cost"]
+        market_value = h["market_value"]
+        pnl = market_value - cost_basis
+        pnl_pct = (pnl / cost_basis * 100.0) if cost_basis not in (0, 0.0) else None
+        total_market_value += market_value
+        total_cost_basis += cost_basis
+        entry = {
+            "ticker": h["ticker"],
+            "net_quantity": net_qty,
+            "avg_cost": h["avg_cost"],
+            "current_price": h["current_price"],
+            "market_value": market_value,
+            "cost_basis": cost_basis,
+            "pnl": pnl,
+            "pnl_pct": pnl_pct,
+        }
+        breakdown.append(entry)
+
+    total_pnl = total_market_value - total_cost_basis
+    total_pnl_pct = (
+        (total_pnl / total_cost_basis * 100.0) if total_cost_basis not in (0, 0.0) else None
+    )
+
+    return {
+        "total_market_value": round(total_market_value, 2),
+        "total_cost_basis": round(total_cost_basis, 2),
+        "total_pnl": round(total_pnl, 2),
+        "total_pnl_pct": round(total_pnl_pct, 4) if total_pnl_pct is not None else None,
+        "breakdown": [
+            {
+                **b,
+                "market_value": round(b["market_value"], 2),
+                "cost_basis": round(b["cost_basis"], 2),
+                "pnl": round(b["pnl"], 2),
+                "pnl_pct": round(b["pnl_pct"], 4) if b["pnl_pct"] is not None else None,
+            }
+            for b in breakdown
+        ],
+    }
+
