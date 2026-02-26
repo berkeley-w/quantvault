@@ -395,10 +395,13 @@
       if (currentSort && currentSort.col === col) {
         arrow = currentSort.asc ? ' ▲' : ' ▼';
       }
-      return '<th onclick="' + onClickFnName + '(\\'' + col + '\\')" style="cursor:pointer;user-select:none;">' + label + arrow + '</th>';
+      return '<th data-col="' + col + '" onclick="' + onClickFnName + '(this)" style="cursor:pointer;user-select:none;">' + label + arrow + '</th>';
     }
 
     function toggleBlotterSort(col) {
+      if (col && typeof col === 'object') {
+        col = col.getAttribute('data-col');
+      }
       if (!state.blotterSort) state.blotterSort = { col: 'id', asc: true };
       if (state.blotterSort.col === col) {
         state.blotterSort.asc = !state.blotterSort.asc;
@@ -410,6 +413,9 @@
     }
 
     function toggleHoldingsSort(col) {
+      if (col && typeof col === 'object') {
+        col = col.getAttribute('data-col');
+      }
       if (!state.holdingsSort) state.holdingsSort = { col: 'ticker', asc: true };
       if (state.holdingsSort.col === col) {
         state.holdingsSort.asc = !state.holdingsSort.asc;
@@ -421,6 +427,9 @@
     }
 
     function toggleSecuritiesSort(col) {
+      if (col && typeof col === 'object') {
+        col = col.getAttribute('data-col');
+      }
       if (!state.securitiesSort) state.securitiesSort = { col: 'id', asc: true };
       if (state.securitiesSort.col === col) {
         state.securitiesSort.asc = !state.securitiesSort.asc;
