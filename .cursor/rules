@@ -1,0 +1,21 @@
+Project: QuantVault - Portfolio Analytics Dashboard
+Stack: Python Flask backend, vanilla HTML/JS/CSS frontend
+Database: PostgreSQL via SQLAlchemy
+External API: Alpha Vantage for stock prices
+
+Structure:
+- backend/main.py (Flask app entry point)
+- backend/models.py (SQLAlchemy models)
+- backend/routes/ (API route handlers)
+- backend/services/ (business logic, API calls)
+- frontend/index.html (single page app)
+- requirements.txt (Python dependencies)
+
+Rules:
+- Always use SQLAlchemy ORM, never raw SQL
+- Frontend uses fetch() to call backend API endpoints
+- All API responses should be JSON
+- Use existing code style and patterns
+- Do not hardcode any API keys or database URLs
+- Do not modify .gitignore or .env
+- Keep all frontend code in the single index.html file
