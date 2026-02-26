@@ -7,7 +7,7 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from pydantic import BaseModel
-from typing import Optional, List
+from typing import Optional, List, Dict
 
 from dotenv import load_dotenv
 from models import (
@@ -16,11 +16,15 @@ from models import (
     Trade,
     RestrictedList,
     AuditLog,
+    CompanyOverview,
+    PortfolioSnapshot,
     SessionLocal,
     init_db,
 )
-from services import get_quote
+from services import get_quote, get_company_overview
 import time
+import json
+from datetime import date, timedelta, datetime
 
 load_dotenv()
 
@@ -553,23 +557,102 @@ def get_price(ticker: str, db: Session = Depends(get_db)):
 def refresh_all_prices(db: Session = Depends(get_db)):
     """
     Fetch quotes for all securities and update their stored price.
-    Uses a 12-second delay between calls to respect the Alpha Vantage free-tier
-    rate limit (5 calls/minute, 25/day).
+    Also refreshes cached company overview data when older than 24 hours
+    (or missing) and records a daily portfolio snapshot.
+
+    Uses a 12-second minimum delay between all Alpha Vantage calls to respect
+    the free-tier rate limits.
     """
     securities = db.query(Security).order_by(Security.ticker).all()
     updated = []
     failed = []
-    for idx, sec in enumerate(securities):
+
+    last_call_ts: Optional[float] = None
+
+    def _wait_for_rate_limit():
+        nonlocal last_call_ts
+        if last_call_ts is None:
+            return
+        elapsed = time.time() - last_call_ts
+        if elapsed < 12:
+            time.sleep(12 - elapsed)
+
+    for sec in securities:
+        # Quote
+        _wait_for_rate_limit()
         quote = get_quote(sec.ticker)
+        last_call_ts = time.time()
         if quote and quote.get("current_price") is not None:
             sec.price = float(quote["current_price"])
             updated.append(sec.ticker)
         else:
             failed.append(sec.ticker)
-        # Avoid sleeping after the very last item
-        if idx < len(securities) - 1:
-            time.sleep(12)
+
+        # Company overview (if missing or stale > 24h)
+        overview = (
+            db.query(CompanyOverview)
+            .filter(CompanyOverview.ticker == sec.ticker.upper())
+            .first()
+        )
+        needs_overview = False
+        if overview is None:
+            needs_overview = True
+        elif overview.last_updated is None:
+            needs_overview = True
+        else:
+            age = datetime.utcnow() - overview.last_updated
+            if age > timedelta(hours=24):
+                needs_overview = True
+
+        if needs_overview:
+            _wait_for_rate_limit()
+            ov_data = get_company_overview(sec.ticker)
+            last_call_ts = time.time()
+            if ov_data:
+                if overview is None:
+                    overview = CompanyOverview(ticker=sec.ticker.upper())
+                    db.add(overview)
+                overview.shares_outstanding = ov_data.get("SharesOutstanding")
+                overview.market_cap = ov_data.get("MarketCapitalization")
+                overview.beta = ov_data.get("Beta")
+                overview.pe_ratio = ov_data.get("PERatio")
+                overview.dividend_yield = ov_data.get("DividendYield")
+                overview.fifty_two_week_high = ov_data.get("52WeekHigh")
+                overview.fifty_two_week_low = ov_data.get("52WeekLow")
+                overview.sector = ov_data.get("Sector")
+                overview.industry = ov_data.get("Industry")
+                overview.last_updated = datetime.utcnow()
+
     db.commit()
+
+    # After updating prices and overviews, store/update today's portfolio snapshot
+    perf = get_portfolio_performance(db)
+    today = date.today()
+    snapshot = (
+        db.query(PortfolioSnapshot)
+        .filter(PortfolioSnapshot.snapshot_date == today)
+        .first()
+    )
+    breakdown_json = json.dumps(perf.get("breakdown", []))
+    if snapshot is None:
+        snapshot = PortfolioSnapshot(
+            snapshot_date=today,
+            total_market_value=perf["total_market_value"],
+            total_cost_basis=perf["total_cost_basis"],
+            total_pnl=perf["total_pnl"],
+            total_pnl_pct=perf.get("total_pnl_pct"),
+            breakdown_json=breakdown_json,
+        )
+        db.add(snapshot)
+    else:
+        snapshot.total_market_value = perf["total_market_value"]
+        snapshot.total_cost_basis = perf["total_cost_basis"]
+        snapshot.total_pnl = perf["total_pnl"]
+        snapshot.total_pnl_pct = perf.get("total_pnl_pct")
+        snapshot.breakdown_json = breakdown_json
+
+    db.commit()
+
     audit(
         db,
         "SECURITIES_PRICES_REFRESHED",
@@ -585,11 +668,10 @@ def refresh_all_prices(db: Session = Depends(get_db)):
     }
 
 
-@app.get("/api/portfolio/performance")
-def get_portfolio_performance(db: Session = Depends(get_db)):
+def _compute_portfolio_performance(db: Session):
     """
-    Calculate portfolio performance from all ACTIVE trades using current
-    prices stored on the Security table.
+    Internal helper to calculate portfolio performance from all ACTIVE trades
+    using current prices stored on the Security table.
     """
     holdings_data = _compute_holdings(db)
     breakdown = []
@@ -621,11 +703,29 @@ def get_portfolio_performance(db: Session = Depends(get_db)):
         (total_pnl / total_cost_basis * 100.0) if total_cost_basis not in (0, 0.0) else None
     )
 
-    return {
+    result = {
         "total_market_value": round(total_market_value, 2),
         "total_cost_basis": round(total_cost_basis, 2),
         "total_pnl": round(total_pnl, 2),
         "total_pnl_pct": round(total_pnl_pct, 4) if total_pnl_pct is not None else None,
+        "breakdown": breakdown,
+    }
+    return result
+
+
+@app.get("/api/portfolio/performance")
+def get_portfolio_performance(db: Session = Depends(get_db)):
+    """
+    Calculate portfolio performance from all ACTIVE trades using current
+    prices stored on the Security table.
+    """
+    perf = _compute_portfolio_performance(db)
+    # Return a version with rounded per-position fields to preserve existing shape
+    return {
+        "total_market_value": perf["total_market_value"],
+        "total_cost_basis": perf["total_cost_basis"],
+        "total_pnl": perf["total_pnl"],
+        "total_pnl_pct": perf["total_pnl_pct"],
         "breakdown": [
             {
                 **b,
@@ -634,7 +734,280 @@ def get_portfolio_performance(db: Session = Depends(get_db)):
                 "pnl": round(b["pnl"], 2),
                 "pnl_pct": round(b["pnl_pct"], 4) if b["pnl_pct"] is not None else None,
             }
-            for b in breakdown
+            for b in perf["breakdown"]
         ],
+    }
+
+
+# ============== Analytics & Snapshots ==============
+
+
+@app.get("/api/analytics")
+def get_analytics(db: Session = Depends(get_db)):
+    perf = _compute_portfolio_performance(db)
+    total_market_value = perf["total_market_value"]
+    breakdown = perf["breakdown"]
+
+    # Map for company overviews and securities
+    overviews: Dict[str, CompanyOverview] = {
+        c.ticker: c for c in db.query(CompanyOverview).all()
+    }
+    securities: Dict[str, Security] = {
+        s.ticker: s for s in db.query(Security).all()
+    }
+
+    positions_out = []
+    portfolio_beta = 0.0
+    hhi = 0.0
+
+    for b in breakdown:
+        ticker = b["ticker"]
+        net_qty = b["net_quantity"]
+        if net_qty == 0:
+            continue
+
+        market_value = b["market_value"]
+        cost_basis = b["cost_basis"]
+        pnl = b["pnl"]
+        pnl_pct = b["pnl_pct"]
+
+        if total_market_value and total_market_value != 0:
+            weight_pct = (market_value / total_market_value) * 100.0
+        else:
+            weight_pct = 0.0
+
+        ov = overviews.get(ticker)
+        sec = securities.get(ticker)
+
+        shares_outstanding = ov.shares_outstanding if ov else None
+        beta = ov.beta if ov else None
+        pe_ratio = ov.pe_ratio if ov else None
+        dividend_yield = ov.dividend_yield if ov else None
+        fifty_two_week_high = ov.fifty_two_week_high if ov else None
+        fifty_two_week_low = ov.fifty_two_week_low if ov else None
+        sector = ov.sector if ov and ov.sector else (sec.sector if sec and sec.sector else None)
+        industry = ov.industry if ov else None
+
+        ownership_pct = None
+        if shares_outstanding and shares_outstanding > 0:
+            ownership_pct = (net_qty / shares_outstanding) * 100.0
+
+        distance_from_high_pct = None
+        if fifty_two_week_high and fifty_two_week_high != 0:
+            distance_from_high_pct = (
+                (b["current_price"] - fifty_two_week_high) / fifty_two_week_high
+            ) * 100.0
+
+        distance_from_low_pct = None
+        if fifty_two_week_low and fifty_two_week_low != 0:
+            distance_from_low_pct = (
+                (b["current_price"] - fifty_two_week_low) / fifty_two_week_low
+            ) * 100.0
+
+        if beta is not None:
+            portfolio_beta += beta * (weight_pct / 100.0)
+
+        if weight_pct is not None:
+            hhi += (weight_pct / 100.0) ** 2
+
+        positions_out.append(
+            {
+                "ticker": ticker,
+                "net_quantity": net_qty,
+                "avg_cost": b["avg_cost"],
+                "current_price": b["current_price"],
+                "market_value": market_value,
+                "cost_basis": cost_basis,
+                "pnl": pnl,
+                "pnl_pct": pnl_pct,
+                "portfolio_weight_pct": weight_pct,
+                "shares_outstanding": shares_outstanding,
+                "ownership_pct": ownership_pct,
+                "beta": beta,
+                "pe_ratio": pe_ratio,
+                "dividend_yield": dividend_yield,
+                "fifty_two_week_high": fifty_two_week_high,
+                "fifty_two_week_low": fifty_two_week_low,
+                "distance_from_52w_high_pct": distance_from_high_pct,
+                "distance_from_52w_low_pct": distance_from_low_pct,
+                "sector": sector,
+                "industry": industry,
+            }
+        )
+
+    # Sector allocation from positions
+    sector_allocation: Dict[str, Dict[str, float]] = {}
+    for p in positions_out:
+        if total_market_value and total_market_value != 0:
+            w_pct = (p["market_value"] / total_market_value) * 100.0
+        else:
+            w_pct = 0.0
+        sec_name = p.get("sector") or "Unknown"
+        agg = sector_allocation.setdefault(
+            sec_name, {"market_value": 0.0, "weight_pct": 0.0}
+        )
+        agg["market_value"] += p["market_value"]
+
+    for sec_name, agg in sector_allocation.items():
+        if total_market_value and total_market_value != 0:
+            agg["weight_pct"] = (agg["market_value"] / total_market_value) * 100.0
+        else:
+            agg["weight_pct"] = 0.0
+
+    concentration_rating = "Low"
+    if hhi > 0.25:
+        concentration_rating = "High"
+    elif hhi > 0.15:
+        concentration_rating = "Moderate"
+
+    portfolio_summary = {
+        "total_market_value": perf["total_market_value"],
+        "total_cost_basis": perf["total_cost_basis"],
+        "total_pnl": perf["total_pnl"],
+        "total_pnl_pct": perf["total_pnl_pct"],
+        "portfolio_beta": portfolio_beta,
+        "hhi_concentration": hhi,
+        "concentration_rating": concentration_rating,
+        "number_of_positions": len(positions_out),
+        "sector_allocation": sector_allocation,
+    }
+
+    return {
+        "positions": positions_out,
+        "portfolio": portfolio_summary,
+    }
+
+
+@app.get("/api/trade-analytics")
+def get_trade_analytics(db: Session = Depends(get_db)):
+    trades = db.query(Trade).order_by(Trade.created_at.asc()).all()
+    total_trades = len(trades)
+    buy_trades = 0
+    sell_trades = 0
+    total_buy_value = 0.0
+    total_sell_value = 0.0
+    total_notional = 0.0
+
+    per_ticker: Dict[str, Dict[str, float]] = {}
+    trades_by_ticker: Dict[str, int] = {}
+
+    for t in trades:
+        side = (t.side or "").upper()
+        notional = t.quantity * t.price
+        total_notional += notional
+
+        info = per_ticker.setdefault(
+            t.ticker,
+            {"buy_qty": 0.0, "buy_cost": 0.0, "sell_qty": 0.0},
+        )
+        trades_by_ticker[t.ticker] = trades_by_ticker.get(t.ticker, 0) + 1
+
+        if side == "BUY":
+            buy_trades += 1
+            total_buy_value += notional
+            info["buy_qty"] += t.quantity
+            info["buy_cost"] += notional
+        elif side == "SELL":
+            sell_trades += 1
+            total_sell_value += notional
+            info["sell_qty"] += t.quantity
+
+    if sell_trades == 0:
+        return {
+            "total_trades": total_trades,
+            "buy_trades": buy_trades,
+            "sell_trades": sell_trades,
+            "total_buy_value": total_buy_value,
+            "total_sell_value": total_sell_value,
+            "completed_round_trips": 0,
+            "win_count": 0,
+            "loss_count": 0,
+            "win_rate_pct": None,
+            "average_win": None,
+            "average_loss": None,
+            "largest_win": 0.0,
+            "largest_loss": 0.0,
+            "avg_trade_size": (total_notional / total_trades) if total_trades else 0.0,
+            "most_traded_ticker": None,
+            "trades_by_ticker": trades_by_ticker,
+        }
+
+    # Compute realized P&L for sells using average cost from BUY trades
+    realized_pnls = []
+    completed_round_trips = 0
+
+    for ticker, info in per_ticker.items():
+        buy_qty = info["buy_qty"]
+        buy_cost = info["buy_cost"]
+        sell_qty = info["sell_qty"]
+        if buy_qty > 0 and sell_qty > 0:
+            completed_round_trips += 1
+        avg_cost = (buy_cost / buy_qty) if buy_qty > 0 else None
+        if avg_cost is None:
+            continue
+        for t in trades:
+            if (t.ticker == ticker) and (t.side or "").upper() == "SELL":
+                realized_pnl = (t.price - avg_cost) * t.quantity
+                realized_pnls.append(realized_pnl)
+
+    win_count = len([p for p in realized_pnls if p > 0])
+    loss_count = len([p for p in realized_pnls if p < 0])
+
+    if win_count + loss_count > 0:
+        win_rate_pct = (win_count / (win_count + loss_count)) * 100.0
+    else:
+        win_rate_pct = None
+
+    wins = [p for p in realized_pnls if p > 0]
+    losses = [p for p in realized_pnls if p < 0]
+
+    average_win = (sum(wins) / len(wins)) if wins else None
+    average_loss = (sum(losses) / len(losses)) if losses else None
+
+    largest_win = max(wins) if wins else 0.0
+    largest_loss = min(losses) if losses else 0.0
+
+    avg_trade_size = (total_notional / total_trades) if total_trades else 0.0
+    most_traded_ticker = None
+    if trades_by_ticker:
+        most_traded_ticker = max(trades_by_ticker.items(), key=lambda x: x[1])[0]
+
+    return {
+        "total_trades": total_trades,
+        "buy_trades": buy_trades,
+        "sell_trades": sell_trades,
+        "total_buy_value": total_buy_value,
+        "total_sell_value": total_sell_value,
+        "completed_round_trips": completed_round_trips,
+        "win_count": win_count,
+        "loss_count": loss_count,
+        "win_rate_pct": win_rate_pct,
+        "average_win": average_win,
+        "average_loss": average_loss,
+        "largest_win": largest_win,
+        "largest_loss": largest_loss,
+        "avg_trade_size": avg_trade_size,
+        "most_traded_ticker": most_traded_ticker,
+        "trades_by_ticker": trades_by_ticker,
+    }
+
+
+@app.get("/api/snapshots")
+def get_snapshots(db: Session = Depends(get_db)):
+    rows = (
+        db.query(PortfolioSnapshot)
+        .order_by(PortfolioSnapshot.snapshot_date.asc())
+        .all()
+    )
+    return {
+        "snapshots": [
+            {
+                "date": r.snapshot_date.isoformat(),
+                "total_market_value": r.total_market_value,
+                "total_pnl": r.total_pnl,
+                "total_pnl_pct": r.total_pnl_pct,
+            }
+            for r in rows
+        ]
     }
 
