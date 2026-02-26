@@ -107,3 +107,60 @@ def get_quote(ticker: str) -> Optional[Dict[str, Any]]:
     except Exception:
         return None
 
+
+def _to_float(value: Any) -> Optional[float]:
+    """
+    Parse Alpha Vantage numeric fields, handling \"None\" and empty strings.
+    """
+    if value is None:
+        return None
+    s = str(value).strip()
+    if not s or s.upper() == "NONE":
+        return None
+    try:
+        return float(s)
+    except Exception:
+        return None
+
+
+def get_company_overview(ticker: str) -> Optional[Dict[str, Any]]:
+    """
+    Fetch company overview data from Alpha Vantage OVERVIEW endpoint.
+
+    Returns a dict (or None on error) with keys:
+        SharesOutstanding, MarketCapitalization, Beta, PERatio,
+        DividendYield, 52WeekHigh, 52WeekLow, Sector, Industry
+    """
+    symbol = (ticker or "").upper().strip()
+    if not symbol or not _API_KEY:
+        return None
+
+    params = {
+        "function": "OVERVIEW",
+        "symbol": symbol,
+        "apikey": _API_KEY,
+    }
+
+    try:
+        resp = requests.get(_BASE_URL, params=params, timeout=10)
+        if resp.status_code != 200:
+            return None
+        data = resp.json()
+    except Exception:
+        return None
+
+    if not isinstance(data, dict) or not data:
+        return None
+
+    return {
+        "SharesOutstanding": _to_float(data.get("SharesOutstanding")),
+        "MarketCapitalization": _to_float(data.get("MarketCapitalization")),
+        "Beta": _to_float(data.get("Beta")),
+        "PERatio": _to_float(data.get("PERatio")),
+        "DividendYield": _to_float(data.get("DividendYield")),
+        "52WeekHigh": _to_float(data.get("52WeekHigh")),
+        "52WeekLow": _to_float(data.get("52WeekLow")),
+        "Sector": data.get("Sector"),
+        "Industry": data.get("Industry"),
+    }
+

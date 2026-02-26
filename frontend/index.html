@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>QuantVault — Trading Platform</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0f172a; color: #e2e8f0; min-height: 100vh; }
@@ -53,6 +54,8 @@
     .metric .value { font-size: 1.5rem; font-weight: 700; margin-top: 4px; }
     .metric .value.positive { color: #22c55e; }
     .metric .value.negative { color: #ef4444; }
+    .positive { color: #22c55e; }
+    .negative { color: #ef4444; }
     .modal-bg { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 100; align-items: center; justify-content: center; padding: 20px; }
     .modal-bg.show { display: flex; }
     .modal { background: #1e293b; border: 1px solid #334155; border-radius: 12px; padding: 24px; max-width: 400px; width: 100%; }
@@ -61,6 +64,14 @@
     .modal-actions { display: flex; gap: 12px; margin-top: 20px; }
     .inline-edit td input { width: 100%; max-width: 120px; }
     .loading { color: #94a3b8; padding: 20px; text-align: center; }
+    .table-scroll { width: 100%; overflow-x: auto; }
+    .analytics-charts-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; margin-top: 16px; }
+    .analytics-summary-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; }
+    .trade-cards-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; }
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 0.7rem; font-weight: 600; }
+    .badge-high { background: #7f1d1d; color: #fecaca; }
+    .badge-moderate { background: #78350f; color: #fef3c7; }
+    .badge-low { background: #064e3b; color: #bbf7d0; }
   </style>
 </head>
 <body>
@@ -207,6 +218,35 @@
         <div id="auditTable"></div>
       </div>
     </div>
+    <div id="tab-analytics" class="tab-pane">
+      <div class="card">
+        <h2>Portfolio Analytics</h2>
+        <button class="btn btn-primary" onclick="loadAnalytics()" style="margin-bottom:16px">Refresh Analytics</button>
+        <div id="analyticsSummary" class="analytics-summary-grid" style="margin-top:12px;"></div>
+      </div>
+      <div class="card">
+        <h2>Position Analytics</h2>
+        <div id="analyticsPositionsTable" class="table-scroll"></div>
+      </div>
+      <div class="card">
+        <h2>Analytics Charts</h2>
+        <div class="analytics-charts-grid">
+          <div><h3 style="font-size:0.9rem;margin-bottom:8px;">Allocation by Position</h3><canvas id="allocChart" height="200"></canvas></div>
+          <div><h3 style="font-size:0.9rem;margin-bottom:8px;">Sector Allocation</h3><canvas id="sectorChart" height="200"></canvas></div>
+          <div><h3 style="font-size:0.9rem;margin-bottom:8px;">P&L by Position</h3><canvas id="pnlChart" height="200"></canvas></div>
+          <div><h3 style="font-size:0.9rem;margin-bottom:8px;">Distance from 52W High</h3><canvas id="distance52wChart" height="200"></canvas></div>
+          <div>
+            <h3 style="font-size:0.9rem;margin-bottom:8px;">Historical Portfolio Value</h3>
+            <div id="portfolioValueMessage" class="loading" style="display:none;"></div>
+            <canvas id="portfolioValueChart" height="200"></canvas>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <h2>Trade Performance</h2>
+        <div id="tradePerfCards" class="trade-cards-grid"></div>
+      </div>
+    </div>
   </main>
   <div id="rejectModal" class="modal-bg">
     <div class="modal">
@@ -221,7 +261,24 @@
 
   <script>
     var API_BASE = '';
-    var state = { securities: [], traders: [], metrics: null, holdings: [], tradesActive: [], tradesRejected: [], restricted: [], audit: [], editingTradeId: null, editingSecId: null, editingTraderId: null, rejectTradeId: null };
+    var state = {
+      securities: [],
+      traders: [],
+      metrics: null,
+      holdings: [],
+      tradesActive: [],
+      tradesRejected: [],
+      restricted: [],
+      audit: [],
+      editingTradeId: null,
+      editingSecId: null,
+      editingTraderId: null,
+      rejectTradeId: null,
+      analytics: null,
+      tradeAnalytics: null,
+      snapshots: [],
+      charts: {}
+    };
 
     function showError(msg) {
       var el = document.getElementById('errorBanner');
@@ -240,8 +297,8 @@
     }
 
     function renderTabs() {
-      var tabs = ['Dashboard', 'Blotter', 'Holdings', 'Compliance', 'Securities', 'Traders', 'Restricted', 'Audit'];
-      var ids = ['dashboard', 'blotter', 'holdings', 'compliance', 'securities', 'traders', 'restricted', 'audit'];
+      var tabs = ['Dashboard', 'Blotter', 'Holdings', 'Compliance', 'Securities', 'Traders', 'Restricted', 'Audit', 'Analytics'];
+      var ids = ['dashboard', 'blotter', 'holdings', 'compliance', 'securities', 'traders', 'restricted', 'audit', 'analytics'];
       var nav = document.getElementById('tabNav');
       nav.innerHTML = '';
       tabs.forEach(function(t, i) {
@@ -257,7 +314,7 @@
       document.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.remove('active'); });
       var pane = document.getElementById('tab-' + id);
       if (pane) pane.classList.add('active');
-      var idx = ['dashboard','blotter','holdings','compliance','securities','traders','restricted','audit'].indexOf(id);
+      var idx = ['dashboard','blotter','holdings','compliance','securities','traders','restricted','audit','analytics'].indexOf(id);
       var btns = document.querySelectorAll('.tab-btn');
       if (btns[idx]) btns[idx].classList.add('active');
       if (id === 'dashboard') refreshDashboard();
@@ -268,6 +325,7 @@
       else if (id === 'traders') refreshTraders();
       else if (id === 'restricted') refreshRestricted();
       else if (id === 'audit') refreshAudit();
+      else if (id === 'analytics') loadAnalytics();
     }
 
     function refreshDashboard() {
@@ -648,6 +706,255 @@
         el.innerHTML = '<table><thead><tr><th>Timestamp</th><th>Action</th><th>Entity Type</th><th>Entity Id</th><th>Details</th></tr></thead><tbody>' +
           list.map(function(a) { return '<tr><td>' + (a.timestamp||'') + '</td><td>' + (a.action||'') + '</td><td>' + (a.entity_type||'') + '</td><td>' + (a.entity_id!=null ? a.entity_id : '') + '</td><td>' + (a.details||'') + '</td></tr>'; }).join('') + '</tbody></table>';
       }).catch(function() { el.innerHTML = '<p class="loading">Failed to load.</p>'; });
+    }
+
+    function destroyChart(key) {
+      if (state.charts[key]) {
+        try { state.charts[key].destroy(); } catch (e) {}
+        state.charts[key] = null;
+      }
+    }
+
+    function loadAnalytics() {
+      var summaryEl = document.getElementById('analyticsSummary');
+      var tableEl = document.getElementById('analyticsPositionsTable');
+      var tradeCardsEl = document.getElementById('tradePerfCards');
+      var pvMsgEl = document.getElementById('portfolioValueMessage');
+      summaryEl.innerHTML = '<div class="loading">Loading analytics...</div>';
+      tableEl.innerHTML = '<div class="loading">Loading positions...</div>';
+      tradeCardsEl.innerHTML = '<div class="loading">Loading trade stats...</div>';
+      pvMsgEl.style.display = 'none';
+      Promise.all([
+        safeFetch(API_BASE + '/api/analytics'),
+        safeFetch(API_BASE + '/api/trade-analytics'),
+        safeFetch(API_BASE + '/api/snapshots')
+      ]).then(function(results) {
+        var analytics = results[0];
+        var tradeStats = results[1];
+        var snapshots = results[2].snapshots || [];
+        state.analytics = analytics;
+        state.tradeAnalytics = tradeStats;
+        state.snapshots = snapshots;
+
+        var p = analytics.portfolio || {};
+        var winRate = tradeStats.win_rate_pct != null ? tradeStats.win_rate_pct.toFixed(2) + '%' : 'N/A';
+        var hhiRating = p.concentration_rating || 'Low';
+        var badgeClass = hhiRating === 'High' ? 'badge-high' : (hhiRating === 'Moderate' ? 'badge-moderate' : 'badge-low');
+
+        summaryEl.innerHTML =
+          '<div class="metric"><div class="label">Total Market Value</div><div class="value">$' +
+          Number(p.total_market_value || 0).toLocaleString(undefined, {minimumFractionDigits: 2}) + '</div></div>' +
+          '<div class="metric"><div class="label">Total P&L</div><div class="value ' +
+          ((p.total_pnl || 0) >= 0 ? 'positive' : 'negative') + '">$' +
+          Number(p.total_pnl || 0).toLocaleString(undefined, {minimumFractionDigits: 2}) +
+          ' (' + (p.total_pnl_pct != null ? p.total_pnl_pct.toFixed(2) + '%' : 'N/A') + ')</div></div>' +
+          '<div class="metric"><div class="label">Portfolio Beta</div><div class="value">' +
+          (p.portfolio_beta != null ? p.portfolio_beta.toFixed(2) : 'N/A') + '</div></div>' +
+          '<div class="metric"><div class="label">HHI Concentration</div><div class="value">' +
+          (p.hhi_concentration != null ? p.hhi_concentration.toFixed(3) : 'N/A') +
+          ' <span class="badge ' + badgeClass + '">' + hhiRating + '</span></div></div>' +
+          '<div class="metric"><div class="label">Number of Positions</div><div class="value">' +
+          (p.number_of_positions || 0) + '</div></div>' +
+          '<div class="metric"><div class="label">Win Rate</div><div class="value">' +
+          winRate + '</div></div>';
+
+        var positions = analytics.positions || [];
+        if (!positions.length) {
+          tableEl.innerHTML = '<p class="loading">No active positions.</p>';
+        } else {
+          var rows = positions.map(function(pos) {
+            var pnlCls = (pos.pnl || 0) >= 0 ? 'positive' : 'negative';
+            var pnlPctCls = (pos.pnl_pct || 0) >= 0 ? 'positive' : 'negative';
+            var vsHighCls = 'negative';
+            return '<tr>' +
+              '<td>' + pos.ticker + '</td>' +
+              '<td>' + pos.net_quantity + '</td>' +
+              '<td>$' + Number(pos.avg_cost).toLocaleString(undefined, {minimumFractionDigits: 2}) + '</td>' +
+              '<td>$' + Number(pos.current_price).toLocaleString(undefined, {minimumFractionDigits: 2}) + '</td>' +
+              '<td>$' + Number(pos.market_value).toLocaleString(undefined, {minimumFractionDigits: 2}) + '</td>' +
+              '<td class="' + pnlCls + '">$' + Number(pos.pnl).toLocaleString(undefined, {minimumFractionDigits: 2}) + '</td>' +
+              '<td class="' + pnlPctCls + '">' + (pos.pnl_pct != null ? pos.pnl_pct.toFixed(2) + '%' : 'N/A') + '</td>' +
+              '<td>' + (pos.portfolio_weight_pct != null ? pos.portfolio_weight_pct.toFixed(2) + '%' : 'N/A') + '</td>' +
+              '<td>' + (pos.ownership_pct != null ? pos.ownership_pct.toFixed(6) + '%' : 'N/A') + '</td>' +
+              '<td>' + (pos.beta != null ? pos.beta.toFixed(2) : 'N/A') + '</td>' +
+              '<td>' + (pos.pe_ratio != null ? pos.pe_ratio.toFixed(2) : 'N/A') + '</td>' +
+              '<td>' + (pos.dividend_yield != null ? pos.dividend_yield.toFixed(2) + '%' : 'N/A') + '</td>' +
+              '<td>$' + (pos.fifty_two_week_high != null ? Number(pos.fifty_two_week_high).toLocaleString(undefined, {minimumFractionDigits: 2}) : 'N/A') + '</td>' +
+              '<td>$' + (pos.fifty_two_week_low != null ? Number(pos.fifty_two_week_low).toLocaleString(undefined, {minimumFractionDigits: 2}) : 'N/A') + '</td>' +
+              '<td class="' + vsHighCls + '">' + (pos.distance_from_52w_high_pct != null ? pos.distance_from_52w_high_pct.toFixed(2) + '%' : 'N/A') + '</td>' +
+            '</tr>';
+          }).join('');
+          tableEl.innerHTML =
+            '<div class="table-scroll"><table><thead><tr>' +
+            '<th>Ticker</th><th>Qty</th><th>Avg Cost</th><th>Price</th><th>Mkt Value</th><th>P&L</th><th>P&L %</th><th>Weight %</th><th>Ownership %</th><th>Beta</th><th>P/E</th><th>Div Yield</th><th>52W High</th><th>52W Low</th><th>vs 52W High %</th>' +
+            '</tr></thead><tbody>' + rows + '</tbody></table></div>';
+        }
+
+        var ts = tradeStats;
+        var winRateCard = ts.win_rate_pct != null ? ts.win_rate_pct.toFixed(2) + '%' : 'N/A';
+        var avgWin = ts.average_win != null ? '$' + Number(ts.average_win).toLocaleString(undefined, {minimumFractionDigits: 2}) : 'N/A';
+        var avgLoss = ts.average_loss != null ? '$' + Number(ts.average_loss).toLocaleString(undefined, {minimumFractionDigits: 2}) : 'N/A';
+        var largestWin = ts.largest_win != null ? '$' + Number(ts.largest_win).toLocaleString(undefined, {minimumFractionDigits: 2}) : 'N/A';
+        var largestLoss = ts.largest_loss != null ? '$' + Number(ts.largest_loss).toLocaleString(undefined, {minimumFractionDigits: 2}) : 'N/A';
+        var avgTradeSize = ts.avg_trade_size != null ? '$' + Number(ts.avg_trade_size).toLocaleString(undefined, {minimumFractionDigits: 2}) : 'N/A';
+        tradeCardsEl.innerHTML =
+          '<div class="metric"><div class="label">Total Trades</div><div class="value">' + (ts.total_trades || 0) + '</div></div>' +
+          '<div class="metric"><div class="label">Buys vs Sells</div><div class="value">' + (ts.buy_trades || 0) + ' / ' + (ts.sell_trades || 0) + '</div></div>' +
+          '<div class="metric"><div class="label">Win Rate</div><div class="value">' + winRateCard + '</div></div>' +
+          '<div class="metric"><div class="label">Average Win / Loss</div><div class="value">' + avgWin + ' / ' + avgLoss + '</div></div>' +
+          '<div class="metric"><div class="label">Largest Win / Loss</div><div class="value">' + largestWin + ' / ' + largestLoss + '</div></div>' +
+          '<div class="metric"><div class="label">Most Traded Ticker</div><div class="value">' + (ts.most_traded_ticker || 'N/A') + '</div></div>';
+
+        // Charts
+        var labels = positions.map(function(p) { return p.ticker; });
+        var allocData = positions.map(function(p) { return p.portfolio_weight_pct || 0; });
+        var pnlData = positions.map(function(p) { return p.pnl || 0; });
+        var distHighData = positions.map(function(p) { return p.distance_from_52w_high_pct || 0; });
+
+        function makeColors(n) {
+          var colors = [];
+          for (var i = 0; i < n; i++) {
+            var hue = (i * 57) % 360;
+            colors.push('hsl(' + hue + ',70%,55%)');
+          }
+          return colors;
+        }
+
+        destroyChart('alloc');
+        destroyChart('sector');
+        destroyChart('pnl');
+        destroyChart('dist52w');
+        destroyChart('portfolioValue');
+
+        var allocCtx = document.getElementById('allocChart').getContext('2d');
+        state.charts.alloc = new Chart(allocCtx, {
+          type: 'doughnut',
+          data: {
+            labels: labels,
+            datasets: [{ data: allocData, backgroundColor: makeColors(labels.length) }]
+          },
+          options: {
+            plugins: {
+              legend: { labels: { color: '#e5e7eb' } },
+              tooltip: {
+                callbacks: {
+                  label: function(ctx) {
+                    var l = ctx.label || '';
+                    var v = ctx.parsed || 0;
+                    return l + ': ' + v.toFixed(2) + '%';
+                  }
+                }
+              }
+            }
+          }
+        });
+
+        var sector = analytics.portfolio && analytics.portfolio.sector_allocation ? analytics.portfolio.sector_allocation : {};
+        var sectorLabels = Object.keys(sector);
+        var sectorData = sectorLabels.map(function(k) { return sector[k].weight_pct || 0; });
+        var sectorCtx = document.getElementById('sectorChart').getContext('2d');
+        state.charts.sector = new Chart(sectorCtx, {
+          type: 'doughnut',
+          data: {
+            labels: sectorLabels,
+            datasets: [{ data: sectorData, backgroundColor: makeColors(sectorLabels.length) }]
+          },
+          options: {
+            plugins: {
+              legend: { labels: { color: '#e5e7eb' } },
+              tooltip: {
+                callbacks: {
+                  label: function(ctx) {
+                    var l = ctx.label || '';
+                    var v = ctx.parsed || 0;
+                    return l + ': ' + v.toFixed(2) + '%';
+                  }
+                }
+              }
+            }
+          }
+        });
+
+        var pnlCtx = document.getElementById('pnlChart').getContext('2d');
+        state.charts.pnl = new Chart(pnlCtx, {
+          type: 'bar',
+          data: {
+            labels: labels,
+            datasets: [{
+              data: pnlData,
+              backgroundColor: pnlData.map(function(v) { return v >= 0 ? '#10b981' : '#ef4444'; })
+            }]
+          },
+          options: {
+            indexAxis: 'y',
+            plugins: {
+              legend: { display: false },
+            },
+            scales: {
+              x: { ticks: { color: '#e5e7eb' } },
+              y: { ticks: { color: '#e5e7eb' } }
+            }
+          }
+        });
+
+        var distCtx = document.getElementById('distance52wChart').getContext('2d');
+        state.charts.dist52w = new Chart(distCtx, {
+          type: 'bar',
+          data: {
+            labels: labels,
+            datasets: [{
+              data: distHighData,
+              backgroundColor: '#ef4444'
+            }]
+          },
+          options: {
+            indexAxis: 'y',
+            plugins: {
+              legend: { display: false },
+            },
+            scales: {
+              x: { ticks: { color: '#e5e7eb' } },
+              y: { ticks: { color: '#e5e7eb' } }
+            }
+          }
+        });
+
+        var pvCtx = document.getElementById('portfolioValueChart').getContext('2d');
+        if (snapshots.length >= 2) {
+          pvMsgEl.style.display = 'none';
+          var dates = snapshots.map(function(s) { return s.date; });
+          var values = snapshots.map(function(s) { return s.total_market_value; });
+          state.charts.portfolioValue = new Chart(pvCtx, {
+            type: 'line',
+            data: {
+              labels: dates,
+              datasets: [{
+                label: 'Portfolio Value',
+                data: values,
+                borderColor: '#22c55e',
+                backgroundColor: 'rgba(34,197,94,0.15)',
+                tension: 0.15
+              }]
+            },
+            options: {
+              plugins: {
+                legend: { labels: { color: '#e5e7eb' } },
+              },
+              scales: {
+                x: { ticks: { color: '#e5e7eb' } },
+                y: { ticks: { color: '#e5e7eb' } }
+              }
+            }
+          });
+        } else {
+          pvMsgEl.style.display = 'block';
+          pvMsgEl.textContent = 'Not enough historical data yet. Portfolio value will be tracked over time.';
+        }
+      }).catch(function() {
+        summaryEl.innerHTML = '<div class="loading">Failed to load analytics.</div>';
+        tableEl.innerHTML = '<div class="loading">Failed to load positions.</div>';
+        tradeCardsEl.innerHTML = '<div class="loading">Failed to load trade stats.</div>';
+      });
     }
 
     function boot() {
