@@ -1,0 +1,20 @@
+{"sessionId":"649224","hypothesisId":"H5","location":"index.html:boot","message":"boot called","data":{},"runId":"run1","timestamp":1772110309120}
+{"sessionId":"649224","hypothesisId":"H2","location":"index.html:refreshDashboard","message":"refreshDashboard called","data":{},"runId":"run1","timestamp":1772110309122}
+{"sessionId":"649224","hypothesisId":"H3","location":"index.html:renderTabs","message":"renderTabs completed","data":{"tabCount":8},"runId":"run1","timestamp":1772110309120}
+{"sessionId":"649224","hypothesisId":"H1","location":"index.html:state","message":"Script evaluated and state initialized","data":{},"runId":"run1","timestamp":1772110309118}
+{"sessionId":"649224","hypothesisId":"H4","location":"index.html:switchTab","message":"switchTab invoked","data":{"id":"blotter","idx":1},"runId":"run1","timestamp":1772110318731}
+{"sessionId":"649224","hypothesisId":"H4","location":"index.html:switchTab","message":"switchTab invoked","data":{"id":"holdings","idx":2},"runId":"run1","timestamp":1772110319956}
+{"sessionId":"649224","hypothesisId":"H4","location":"index.html:switchTab","message":"switchTab invoked","data":{"id":"compliance","idx":3},"runId":"run1","timestamp":1772110320864}
+{"sessionId":"649224","hypothesisId":"H4","location":"index.html:switchTab","message":"switchTab invoked","data":{"id":"securities","idx":4},"runId":"run1","timestamp":1772110326352}
+{"sessionId":"649224","hypothesisId":"H4","location":"index.html:switchTab","message":"switchTab invoked","data":{"id":"traders","idx":5},"runId":"run1","timestamp":1772110327249}
+{"sessionId":"649224","hypothesisId":"H4","location":"index.html:switchTab","message":"switchTab invoked","data":{"id":"audit","idx":7},"runId":"run1","timestamp":1772110327951}
+{"sessionId":"649224","hypothesisId":"H4","location":"index.html:switchTab","message":"switchTab invoked","data":{"id":"restricted","idx":6},"runId":"run1","timestamp":1772110328817}
+{"sessionId":"649224","hypothesisId":"H4","location":"index.html:switchTab","message":"switchTab invoked","data":{"id":"dashboard","idx":0},"runId":"run1","timestamp":1772110330024}
+{"sessionId":"649224","hypothesisId":"H2","location":"index.html:refreshDashboard","message":"refreshDashboard called","data":{},"runId":"run1","timestamp":1772110330024}
+{"sessionId":"649224","hypothesisId":"H4","location":"index.html:switchTab","message":"switchTab invoked","data":{"id":"blotter","idx":1},"runId":"run1","timestamp":1772110336958}
+{"sessionId":"649224","hypothesisId":"H2","location":"index.html:refreshDashboard","message":"refreshDashboard called","data":{},"runId":"run1","timestamp":1772110356890}
+{"sessionId":"649224","hypothesisId":"H4","location":"index.html:switchTab","message":"switchTab invoked","data":{"id":"dashboard","idx":0},"runId":"run1","timestamp":1772110356890}
+{"sessionId":"649224","hypothesisId":"H4","location":"index.html:switchTab","message":"switchTab invoked","data":{"id":"blotter","idx":1},"runId":"run1","timestamp":1772110515540}
+{"sessionId":"649224","hypothesisId":"H4","location":"index.html:switchTab","message":"switchTab invoked","data":{"id":"dashboard","idx":0},"runId":"run1","timestamp":1772110523343}
+{"sessionId":"649224","hypothesisId":"H2","location":"index.html:refreshDashboard","message":"refreshDashboard called","data":{},"runId":"run1","timestamp":1772110523344}
+{"sessionId":"649224","hypothesisId":"H4","location":"index.html:switchTab","message":"switchTab invoked","data":{"id":"blotter","idx":1},"runId":"run1","timestamp":1772110527077}
