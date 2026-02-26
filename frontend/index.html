@@ -59,8 +59,39 @@
     .modal h3 { margin-bottom: 16px; }
     .modal .form-group { margin-bottom: 16px; }
     .modal-actions { display: flex; gap: 12px; margin-top: 20px; }
+    .success-toast {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      background: #22c55e;
+      color: #0f172a;
+      padding: 12px 20px;
+      border-radius: 8px;
+      z-index: 200;
+      font-size: 0.875rem;
+      font-weight: 500;
+      box-shadow: 0 10px 25px rgba(15,23,42,0.6);
+      opacity: 1;
+      transition: opacity 0.4s ease;
+    }
     .inline-edit td input { width: 100%; max-width: 120px; }
     .loading { color: #94a3b8; padding: 20px; text-align: center; }
+    .skeleton-container {
+      width: 100%;
+      padding: 20px 0;
+    }
+    .skeleton-bar {
+      height: 14px;
+      background: #334155;
+      border-radius: 4px;
+      margin-bottom: 10px;
+      animation: skeleton-pulse 1.5s ease-in-out infinite;
+    }
+    @keyframes skeleton-pulse {
+      0% { opacity: 0.4; }
+      50% { opacity: 1; }
+      100% { opacity: 0.4; }
+    }
   </style>
 </head>
 <body>
@@ -218,10 +249,20 @@
       </div>
     </div>
   </div>
+  <div id="confirmModal" class="modal-bg">
+    <div class="modal">
+      <h3>Confirm Action</h3>
+      <p id="confirmMessage" style="margin-bottom:16px;"></p>
+      <div class="modal-actions">
+        <button class="btn btn-danger" onclick="if (state.confirmCallback) { state.confirmCallback(); } hideConfirmModal();">Confirm</button>
+        <button class="btn btn-secondary" onclick="hideConfirmModal()">Cancel</button>
+      </div>
+    </div>
+  </div>
 
   <script>
     var API_BASE = '';
-    var state = { securities: [], traders: [], metrics: null, holdings: [], tradesActive: [], tradesRejected: [], restricted: [], audit: [], editingTradeId: null, editingSecId: null, editingTraderId: null, rejectTradeId: null };
+    var state = { securities: [], traders: [], metrics: null, holdings: [], tradesActive: [], tradesRejected: [], restricted: [], audit: [], editingTradeId: null, editingSecId: null, editingTraderId: null, rejectTradeId: null, confirmCallback: null, successToastTimeout: null };
 
     function showError(msg) {
       var el = document.getElementById('errorBanner');
@@ -230,6 +271,68 @@
       setTimeout(function() { el.classList.remove('show'); }, 8000);
     }
     function hideError() { document.getElementById('errorBanner').classList.remove('show'); }
+
+    function showSuccess(msg) {
+      try {
+        if (state.successToastTimeout) {
+          clearTimeout(state.successToastTimeout);
+          state.successToastTimeout = null;
+        }
+      } catch (e) {}
+      var el = document.getElementById('successToast');
+      if (!el) {
+        el = document.createElement('div');
+        el.id = 'successToast';
+        el.className = 'success-toast';
+        document.body.appendChild(el);
+      }
+      el.textContent = msg;
+      el.style.display = 'block';
+      el.style.opacity = '1';
+      state.successToastTimeout = setTimeout(function() {
+        el.style.opacity = '0';
+        state.successToastTimeout = setTimeout(function() {
+          if (el && el.parentNode) {
+            el.parentNode.removeChild(el);
+          }
+          state.successToastTimeout = null;
+        }, 400);
+      }, 3000);
+    }
+
+    function skeletonHTML() {
+      return '<div class="skeleton-container">' +
+        '<div class="skeleton-bar"></div>' +
+        '<div class="skeleton-bar"></div>' +
+        '<div class="skeleton-bar"></div>' +
+        '<div class="skeleton-bar" style="max-width:60%"></div>' +
+        '</div>';
+    }
+
+    function sideBadge(side) {
+      var s = (side || '').toString().toUpperCase();
+      if (s === 'BUY') {
+        return '<span style="background:#22c55e;color:#0f172a;padding:2px 10px;border-radius:4px;font-weight:600;">BUY</span>';
+      }
+      if (s === 'SELL') {
+        return '<span style="background:#dc2626;color:#ffffff;padding:2px 10px;border-radius:4px;font-weight:600;">SELL</span>';
+      }
+      return side || '';
+    }
+
+    function showConfirmModal(message, onConfirmCallback) {
+      state.confirmCallback = (typeof onConfirmCallback === 'function') ? onConfirmCallback : null;
+      var msgEl = document.getElementById('confirmMessage');
+      if (msgEl) msgEl.textContent = message || '';
+      var modal = document.getElementById('confirmModal');
+      if (modal) modal.classList.add('show');
+    }
+
+    function hideConfirmModal() {
+      state.confirmCallback = null;
+      var modal = document.getElementById('confirmModal');
+      if (modal) modal.classList.remove('show');
+    }
 
     function safeFetch(url, opts) {
       opts = opts || {};
@@ -272,7 +375,7 @@
 
     function refreshDashboard() {
       var el = document.getElementById('dashboardMetrics');
-      el.innerHTML = '<div class="loading">Loading...</div>';
+      el.innerHTML = skeletonHTML();
       safeFetch(API_BASE + '/api/metrics').then(function(m) {
         state.metrics = m;
         el.innerHTML = '<div class="metric"><div class="label">Total Market Value</div><div class="value">$' + Number(m.total_market_value).toLocaleString(undefined, {minimumFractionDigits: 2}) + '</div></div>' +
@@ -296,7 +399,7 @@
     function loadPortfolioPerformance() {
       var summaryEl = document.getElementById('dashboardPerfSummary');
       var tableEl = document.getElementById('dashboardPerfTable');
-      summaryEl.innerHTML = '<div class="loading">Loading performance...</div>';
+      summaryEl.innerHTML = skeletonHTML();
       tableEl.innerHTML = '';
       safeFetch(API_BASE + '/api/portfolio/performance').then(function(p) {
         state.portfolioPerf = p;
@@ -406,12 +509,13 @@
         document.getElementById('blotterNotes').value = '';
         refreshBlotter();
         hideError();
+        showSuccess('Trade submitted.');
       }).catch(function() {});
     }
     function refreshBlotter() {
       fillBlotterDropdowns();
       var el = document.getElementById('blotterTable');
-      el.innerHTML = '<div class="loading">Loading...</div>';
+      el.innerHTML = skeletonHTML();
       safeFetch(API_BASE + '/api/trades?status=ACTIVE').then(function(list) {
         state.tradesActive = list;
         if (list.length === 0) { el.innerHTML = '<p class="loading">No active trades.</p>'; return; }
@@ -420,7 +524,7 @@
             if (state.editingTradeId === t.id) {
               return '<tr data-id="' + t.id + '"><td>' + t.id + '</td><td><input value="' + t.ticker + '" id="eTicker"></td><td><select id="eSide"><option value="BUY"' + (t.side==='BUY'?' selected':'') + '>BUY</option><option value="SELL"' + (t.side==='SELL'?' selected':'') + '>SELL</option></select></td><td><input type="number" value="' + t.quantity + '" id="eQty"></td><td><input type="number" value="' + t.price + '" id="ePrice"></td><td><input value="' + t.trader_name + '" id="eTrader"></td><td><input value="' + (t.strategy||'') + '" id="eStrategy"></td><td><input value="' + (t.notes||'') + '" id="eNotes"></td><td><button class="btn btn-primary" onclick="saveEdit(' + t.id + ')">Save</button> <button class="btn btn-secondary" onclick="cancelEdit()">Cancel</button></td></tr>';
             }
-            return '<tr data-id="' + t.id + '"><td>' + t.id + '</td><td>' + t.ticker + '</td><td>' + t.side + '</td><td>' + t.quantity + '</td><td>' + t.price + '</td><td>' + t.trader_name + '</td><td>' + (t.strategy||'') + '</td><td>' + (t.notes||'') + '</td><td><button class="btn btn-secondary" onclick="startEdit(' + t.id + ')">Edit</button> <button class="btn btn-danger" onclick="deleteTrade(' + t.id + ')">Delete</button></td></tr>';
+            return '<tr data-id="' + t.id + '"><td>' + t.id + '</td><td>' + t.ticker + '</td><td>' + sideBadge(t.side) + '</td><td>' + t.quantity + '</td><td>' + t.price + '</td><td>' + t.trader_name + '</td><td>' + (t.strategy||'') + '</td><td>' + (t.notes||'') + '</td><td><button class="btn btn-secondary" onclick="startEdit(' + t.id + ')">Edit</button> <button class="btn btn-danger" onclick="deleteTrade(' + t.id + ')">Delete</button></td></tr>';
           }).join('') + '</tbody></table>';
       }).catch(function() { el.innerHTML = '<p class="loading">Failed to load trades.</p>'; });
     }
@@ -436,16 +540,17 @@
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ticker: ticker, side: side, quantity: qty, price: price, trader_name: trader, strategy: document.getElementById('eStrategy').value || null, notes: document.getElementById('eNotes').value || null })
-      }).then(function() { state.editingTradeId = null; refreshBlotter(); hideError(); }).catch(function() {});
+      }).then(function() { state.editingTradeId = null; refreshBlotter(); hideError(); showSuccess('Trade updated.'); }).catch(function() {});
     }
     function deleteTrade(id) {
-      if (!confirm('Delete this trade? This cannot be undone.')) return;
-      safeFetch(API_BASE + '/api/trades/' + id, { method: 'DELETE' }).then(function() { refreshBlotter(); hideError(); }).catch(function() {});
+      showConfirmModal('Delete this trade? This cannot be undone.', function() {
+        safeFetch(API_BASE + '/api/trades/' + id, { method: 'DELETE' }).then(function() { refreshBlotter(); hideError(); showSuccess('Trade deleted.'); }).catch(function() {});
+      });
     }
 
     function refreshHoldings() {
       var el = document.getElementById('holdingsTable');
-      el.innerHTML = '<div class="loading">Loading...</div>';
+      el.innerHTML = skeletonHTML();
       safeFetch(API_BASE + '/api/holdings').then(function(list) {
         state.holdings = list;
         if (list.length === 0) { el.innerHTML = '<p class="loading">No holdings (no active trades or all flat).</p>'; return; }
@@ -459,19 +564,19 @@
     function refreshCompliance() {
       var elActive = document.getElementById('complianceActiveTable');
       var elRej = document.getElementById('complianceRejectedTable');
-      elActive.innerHTML = '<div class="loading">Loading...</div>';
-      elRej.innerHTML = '<div class="loading">Loading...</div>';
+      elActive.innerHTML = skeletonHTML();
+      elRej.innerHTML = skeletonHTML();
       safeFetch(API_BASE + '/api/trades?status=ACTIVE').then(function(list) {
         state.tradesActive = list;
         if (list.length === 0) elActive.innerHTML = '<p class="loading">No active trades for review.</p>';
         else elActive.innerHTML = '<table><thead><tr><th>Id</th><th>Ticker</th><th>Side</th><th>Qty</th><th>Price</th><th>Trader</th><th>Actions</th></tr></thead><tbody>' +
-          list.map(function(t) { return '<tr><td>' + t.id + '</td><td>' + t.ticker + '</td><td>' + t.side + '</td><td>' + t.quantity + '</td><td>' + t.price + '</td><td>' + t.trader_name + '</td><td><button class="btn btn-danger" onclick="openRejectModal(' + t.id + ')">Reject</button></td></tr>'; }).join('') + '</tbody></table>';
+          list.map(function(t) { return '<tr><td>' + t.id + '</td><td>' + t.ticker + '</td><td>' + sideBadge(t.side) + '</td><td>' + t.quantity + '</td><td>' + t.price + '</td><td>' + t.trader_name + '</td><td><button class="btn btn-danger" onclick="openRejectModal(' + t.id + ')">Reject</button></td></tr>'; }).join('') + '</tbody></table>';
       }).catch(function() { elActive.innerHTML = '<p class="loading">Failed to load.</p>'; });
       safeFetch(API_BASE + '/api/trades?status=REJECTED').then(function(list) {
         state.tradesRejected = list;
         if (list.length === 0) elRej.innerHTML = '<p class="loading">No rejected trades.</p>';
         else elRej.innerHTML = '<table><thead><tr><th>Id</th><th>Ticker</th><th>Side</th><th>Qty</th><th>Price</th><th>Trader</th><th>Rejection Reason</th><th>Rejected At</th><th>Actions</th></tr></thead><tbody>' +
-          list.map(function(t) { return '<tr><td>' + t.id + '</td><td>' + t.ticker + '</td><td>' + t.side + '</td><td>' + t.quantity + '</td><td>' + t.price + '</td><td>' + t.trader_name + '</td><td>' + (t.rejection_reason||'') + '</td><td>' + (t.rejected_at||'') + '</td><td><button class="btn btn-primary" onclick="reinstateTrade(' + t.id + ')">Reinstate</button></td></tr>'; }).join('') + '</tbody></table>';
+          list.map(function(t) { return '<tr><td>' + t.id + '</td><td>' + t.ticker + '</td><td>' + sideBadge(t.side) + '</td><td>' + t.quantity + '</td><td>' + t.price + '</td><td>' + t.trader_name + '</td><td>' + (t.rejection_reason||'') + '</td><td>' + (t.rejected_at||'') + '</td><td><button class="btn btn-primary" onclick="reinstateTrade(' + t.id + ')">Reinstate</button></td></tr>'; }).join('') + '</tbody></table>';
       }).catch(function() { elRej.innerHTML = '<p class="loading">Failed to load.</p>'; });
     }
     function openRejectModal(id) { state.rejectTradeId = id; document.getElementById('rejectReason').value = ''; document.getElementById('rejectModal').classList.add('show'); }
@@ -484,10 +589,10 @@
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ rejection_reason: reason })
-      }).then(function() { hideRejectModal(); refreshCompliance(); hideError(); }).catch(function() {});
+      }).then(function() { hideRejectModal(); refreshCompliance(); hideError(); showSuccess('Trade rejected.'); }).catch(function() {});
     }
     function reinstateTrade(id) {
-      safeFetch(API_BASE + '/api/trades/' + id + '/reinstate', { method: 'POST' }).then(function() { refreshCompliance(); hideError(); }).catch(function() {});
+      safeFetch(API_BASE + '/api/trades/' + id + '/reinstate', { method: 'POST' }).then(function() { refreshCompliance(); hideError(); showSuccess('Trade reinstated.'); }).catch(function() {});
     }
 
     function addSecurity() {
@@ -503,12 +608,12 @@
         body: JSON.stringify({ ticker: ticker, name: name, sector: sector || null, price: price, shares_outstanding: shares ? parseFloat(shares) : null })
       }).then(function() {
         document.getElementById('secTicker').value = ''; document.getElementById('secName').value = ''; document.getElementById('secSector').value = ''; document.getElementById('secPrice').value = ''; document.getElementById('secShares').value = '';
-        refreshSecurities(); hideError();
+        refreshSecurities(); hideError(); showSuccess('Security added.');
       }).catch(function() {});
     }
     function refreshSecurities() {
       var el = document.getElementById('securitiesTable');
-      el.innerHTML = '<div class="loading">Loading...</div>';
+      el.innerHTML = skeletonHTML();
       safeFetch(API_BASE + '/api/securities').then(function(list) {
         state.securities = list;
         if (list.length === 0) { el.innerHTML = '<p class="loading">No securities.</p>'; state.editingSecId = null; return; }
@@ -534,7 +639,7 @@
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ticker: ticker, name: name, sector: sector || null, price: price, shares_outstanding: shares ? parseFloat(shares) : null })
-      }).then(function() { state.editingSecId = null; refreshSecurities(); hideError(); }).catch(function() {});
+      }).then(function() { state.editingSecId = null; refreshSecurities(); hideError(); showSuccess('Security updated.'); }).catch(function() {});
     }
     function refreshLivePrice(id, ticker) {
       var cell = document.getElementById('secLive-' + id);
@@ -555,8 +660,9 @@
       }).catch(function() { cell.textContent = 'N/A'; });
     }
     function deleteSecurity(id) {
-      if (!confirm('Delete this security?')) return;
-      safeFetch(API_BASE + '/api/securities/' + id, { method: 'DELETE' }).then(function() { refreshSecurities(); hideError(); }).catch(function() {});
+      showConfirmModal('Delete this security?', function() {
+        safeFetch(API_BASE + '/api/securities/' + id, { method: 'DELETE' }).then(function() { refreshSecurities(); hideError(); showSuccess('Security deleted.'); }).catch(function() {});
+      });
     }
 
     function addTrader() {
@@ -570,12 +676,12 @@
         body: JSON.stringify({ name: name, desk: desk || null, email: email || null })
       }).then(function() {
         document.getElementById('traderName').value = ''; document.getElementById('traderDesk').value = ''; document.getElementById('traderEmail').value = '';
-        refreshTraders(); hideError();
+        refreshTraders(); hideError(); showSuccess('Trader added.');
       }).catch(function() {});
     }
     function refreshTraders() {
       var el = document.getElementById('tradersTable');
-      el.innerHTML = '<div class="loading">Loading...</div>';
+      el.innerHTML = skeletonHTML();
       safeFetch(API_BASE + '/api/traders').then(function(list) {
         state.traders = list;
         if (list.length === 0) { el.innerHTML = '<p class="loading">No traders.</p>'; state.editingTraderId = null; return; }
@@ -599,11 +705,12 @@
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: name, desk: desk || null, email: email || null })
-      }).then(function() { state.editingTraderId = null; refreshTraders(); hideError(); }).catch(function() {});
+      }).then(function() { state.editingTraderId = null; refreshTraders(); hideError(); showSuccess('Trader updated.'); }).catch(function() {});
     }
     function deleteTrader(id) {
-      if (!confirm('Delete this trader?')) return;
-      safeFetch(API_BASE + '/api/traders/' + id, { method: 'DELETE' }).then(function() { refreshTraders(); hideError(); }).catch(function() {});
+      showConfirmModal('Delete this trader?', function() {
+        safeFetch(API_BASE + '/api/traders/' + id, { method: 'DELETE' }).then(function() { refreshTraders(); hideError(); showSuccess('Trader deleted.'); }).catch(function() {});
+      });
     }
 
     function addRestricted() {
@@ -617,7 +724,7 @@
         body: JSON.stringify({ ticker: ticker, reason: reason || null, added_by: addedBy || null })
       }).then(function() {
         document.getElementById('restReason').value = ''; document.getElementById('restAddedBy').value = '';
-        refreshRestricted(); hideError();
+        refreshRestricted(); hideError(); showSuccess('Restricted ticker added.');
       }).catch(function() {});
     }
     function refreshRestricted() {
@@ -627,7 +734,7 @@
         sel.innerHTML = '<option value="">Select ticker</option>' + secs.map(function(s) { return '<option value="' + s.ticker + '">' + s.ticker + '</option>'; }).join('');
       }).catch(function() {});
       var el = document.getElementById('restrictedTable');
-      el.innerHTML = '<div class="loading">Loading...</div>';
+      el.innerHTML = skeletonHTML();
       safeFetch(API_BASE + '/api/restricted').then(function(list) {
         state.restricted = list;
         if (list.length === 0) { el.innerHTML = '<p class="loading">No restricted tickers.</p>'; return; }
@@ -636,12 +743,12 @@
       }).catch(function() { el.innerHTML = '<p class="loading">Failed to load.</p>'; });
     }
     function deleteRestricted(id) {
-      safeFetch(API_BASE + '/api/restricted/' + id, { method: 'DELETE' }).then(function() { refreshRestricted(); hideError(); }).catch(function() {});
+      safeFetch(API_BASE + '/api/restricted/' + id, { method: 'DELETE' }).then(function() { refreshRestricted(); hideError(); showSuccess('Restricted ticker removed.'); }).catch(function() {});
     }
 
     function refreshAudit() {
       var el = document.getElementById('auditTable');
-      el.innerHTML = '<div class="loading">Loading...</div>';
+      el.innerHTML = skeletonHTML();
       safeFetch(API_BASE + '/api/audit').then(function(list) {
         state.audit = list;
         if (list.length === 0) { el.innerHTML = '<p class="loading">No audit entries.</p>'; return; }
