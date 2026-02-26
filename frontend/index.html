@@ -160,6 +160,8 @@
       <div class="card">
         <h2>Active Trades (editable)</h2>
         <button class="btn btn-secondary" onclick="refreshBlotter()" style="margin-bottom:12px">Refresh</button>
+        <button class="btn btn-secondary" onclick="exportBlotterCSV()" style="margin-left:8px;margin-bottom:12px">Export CSV</button>
+        <input type="text" id="blotterSearch" placeholder="Search by ticker, trader, strategy..." style="margin-bottom:12px;width:100%;max-width:320px">
         <div id="blotterTable"></div>
       </div>
     </div>
@@ -167,6 +169,7 @@
       <div class="card">
         <h2>Holdings (computed from active trades)</h2>
         <button class="btn btn-primary" onclick="refreshHoldings()" style="margin-bottom:16px">Refresh</button>
+        <button class="btn btn-secondary" onclick="exportHoldingsCSV()" style="margin-left:8px;margin-bottom:16px">Export CSV</button>
         <div id="holdingsTable"></div>
       </div>
     </div>
@@ -196,6 +199,7 @@
       <div class="card">
         <h2>Securities</h2>
         <button class="btn btn-secondary" onclick="refreshSecurities()" style="margin-bottom:12px">Refresh</button>
+        <button class="btn btn-secondary" onclick="exportSecuritiesCSV()" style="margin-left:8px;margin-bottom:12px">Export CSV</button>
         <div id="securitiesTable"></div>
       </div>
     </div>
@@ -212,6 +216,7 @@
       <div class="card">
         <h2>Traders</h2>
         <button class="btn btn-secondary" onclick="refreshTraders()" style="margin-bottom:12px">Refresh</button>
+        <button class="btn btn-secondary" onclick="exportTradersCSV()" style="margin-left:8px;margin-bottom:12px">Export CSV</button>
         <div id="tradersTable"></div>
       </div>
     </div>
@@ -228,6 +233,7 @@
       <div class="card">
         <h2>Restricted List</h2>
         <button class="btn btn-secondary" onclick="refreshRestricted()" style="margin-bottom:12px">Refresh</button>
+        <button class="btn btn-secondary" onclick="exportRestrictedCSV()" style="margin-left:8px;margin-bottom:12px">Export CSV</button>
         <div id="restrictedTable"></div>
       </div>
     </div>
@@ -235,6 +241,7 @@
       <div class="card">
         <h2>Audit Log</h2>
         <button class="btn btn-secondary" onclick="refreshAudit()" style="margin-bottom:12px">Refresh</button>
+        <button class="btn btn-secondary" onclick="exportAuditCSV()" style="margin-left:8px;margin-bottom:12px">Export CSV</button>
         <div id="auditTable"></div>
       </div>
     </div>
@@ -262,7 +269,7 @@
 
   <script>
     var API_BASE = '';
-    var state = { securities: [], traders: [], metrics: null, holdings: [], tradesActive: [], tradesRejected: [], restricted: [], audit: [], editingTradeId: null, editingSecId: null, editingTraderId: null, rejectTradeId: null, confirmCallback: null, successToastTimeout: null };
+    var state = { securities: [], traders: [], metrics: null, holdings: [], tradesActive: [], tradesRejected: [], restricted: [], audit: [], editingTradeId: null, editingSecId: null, editingTraderId: null, rejectTradeId: null, confirmCallback: null, successToastTimeout: null, blotterSort: { col: 'id', asc: true }, holdingsSort: { col: 'ticker', asc: true }, securitiesSort: { col: 'id', asc: true }, baseTabNames: [] };
 
     function showError(msg) {
       var el = document.getElementById('errorBanner');
@@ -334,6 +341,108 @@
       if (modal) modal.classList.remove('show');
     }
 
+    function exportCSV(filename, headers, rows) {
+      var lines = [];
+      lines.push(headers.join(','));
+      (rows || []).forEach(function(row) {
+        var line = (row || []).map(function(val) {
+          var s = val == null ? '' : String(val);
+          if (s.indexOf('"') !== -1 || s.indexOf(',') !== -1 || s.indexOf('\n') !== -1 || s.indexOf('\r') !== -1) {
+            s = '"' + s.replace(/"/g, '""') + '"';
+          }
+          return s;
+        }).join(',');
+        lines.push(line);
+      });
+      var csv = lines.join('\r\n');
+      var blob = new Blob([csv], { type: 'text/csv' });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(function() {
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }, 0);
+    }
+
+    function sortData(arr, col, asc) {
+      var list = (arr || []).slice();
+      if (!col) return list;
+      list.sort(function(a, b) {
+        var av = a && Object.prototype.hasOwnProperty.call(a, col) ? a[col] : null;
+        var bv = b && Object.prototype.hasOwnProperty.call(b, col) ? b[col] : null;
+        var an = typeof av === 'number' ? av : parseFloat(av);
+        var bn = typeof bv === 'number' ? bv : parseFloat(bv);
+        if (!isNaN(an) && !isNaN(bn)) {
+          if (an < bn) return asc ? -1 : 1;
+          if (an > bn) return asc ? 1 : -1;
+          return 0;
+        }
+        var as = (av == null ? '' : String(av)).toLowerCase();
+        var bs = (bv == null ? '' : String(bv)).toLowerCase();
+        if (as < bs) return asc ? -1 : 1;
+        if (as > bs) return asc ? 1 : -1;
+        return 0;
+      });
+      return list;
+    }
+
+    function sortHeader(label, col, currentSort, onClickFnName) {
+      var arrow = '';
+      if (currentSort && currentSort.col === col) {
+        arrow = currentSort.asc ? ' ▲' : ' ▼';
+      }
+      return '<th onclick="' + onClickFnName + '(\\'' + col + '\\')" style="cursor:pointer;user-select:none;">' + label + arrow + '</th>';
+    }
+
+    function toggleBlotterSort(col) {
+      if (!state.blotterSort) state.blotterSort = { col: 'id', asc: true };
+      if (state.blotterSort.col === col) {
+        state.blotterSort.asc = !state.blotterSort.asc;
+      } else {
+        state.blotterSort.col = col;
+        state.blotterSort.asc = true;
+      }
+      renderBlotterTable();
+    }
+
+    function toggleHoldingsSort(col) {
+      if (!state.holdingsSort) state.holdingsSort = { col: 'ticker', asc: true };
+      if (state.holdingsSort.col === col) {
+        state.holdingsSort.asc = !state.holdingsSort.asc;
+      } else {
+        state.holdingsSort.col = col;
+        state.holdingsSort.asc = true;
+      }
+      renderHoldingsTable();
+    }
+
+    function toggleSecuritiesSort(col) {
+      if (!state.securitiesSort) state.securitiesSort = { col: 'id', asc: true };
+      if (state.securitiesSort.col === col) {
+        state.securitiesSort.asc = !state.securitiesSort.asc;
+      } else {
+        state.securitiesSort.col = col;
+        state.securitiesSort.asc = true;
+      }
+      renderSecuritiesTable();
+    }
+
+    function updateTabCount(tabIndex, count) {
+      var btns = document.querySelectorAll('.tab-btn');
+      if (!btns[tabIndex] || !state.baseTabNames || !state.baseTabNames.length) return;
+      var base = state.baseTabNames[tabIndex] || '';
+      if (!base) return;
+      if (tabIndex === 0) {
+        btns[tabIndex].textContent = base;
+      } else {
+        btns[tabIndex].textContent = base + ' (' + count + ')';
+      }
+    }
+
     function safeFetch(url, opts) {
       opts = opts || {};
       return fetch(url, opts).then(function(r) {
@@ -344,6 +453,7 @@
 
     function renderTabs() {
       var tabs = ['Dashboard', 'Blotter', 'Holdings', 'Compliance', 'Securities', 'Traders', 'Restricted', 'Audit'];
+      state.baseTabNames = tabs.slice();
       var ids = ['dashboard', 'blotter', 'holdings', 'compliance', 'securities', 'traders', 'restricted', 'audit'];
       var nav = document.getElementById('tabNav');
       nav.innerHTML = '';
@@ -518,15 +628,60 @@
       el.innerHTML = skeletonHTML();
       safeFetch(API_BASE + '/api/trades?status=ACTIVE').then(function(list) {
         state.tradesActive = list;
-        if (list.length === 0) { el.innerHTML = '<p class="loading">No active trades.</p>'; return; }
-        el.innerHTML = '<table><thead><tr><th>Id</th><th>Ticker</th><th>Side</th><th>Qty</th><th>Price</th><th>Trader</th><th>Strategy</th><th>Notes</th><th>Actions</th></tr></thead><tbody>' +
-          list.map(function(t) {
-            if (state.editingTradeId === t.id) {
-              return '<tr data-id="' + t.id + '"><td>' + t.id + '</td><td><input value="' + t.ticker + '" id="eTicker"></td><td><select id="eSide"><option value="BUY"' + (t.side==='BUY'?' selected':'') + '>BUY</option><option value="SELL"' + (t.side==='SELL'?' selected':'') + '>SELL</option></select></td><td><input type="number" value="' + t.quantity + '" id="eQty"></td><td><input type="number" value="' + t.price + '" id="ePrice"></td><td><input value="' + t.trader_name + '" id="eTrader"></td><td><input value="' + (t.strategy||'') + '" id="eStrategy"></td><td><input value="' + (t.notes||'') + '" id="eNotes"></td><td><button class="btn btn-primary" onclick="saveEdit(' + t.id + ')">Save</button> <button class="btn btn-secondary" onclick="cancelEdit()">Cancel</button></td></tr>';
-            }
-            return '<tr data-id="' + t.id + '"><td>' + t.id + '</td><td>' + t.ticker + '</td><td>' + sideBadge(t.side) + '</td><td>' + t.quantity + '</td><td>' + t.price + '</td><td>' + t.trader_name + '</td><td>' + (t.strategy||'') + '</td><td>' + (t.notes||'') + '</td><td><button class="btn btn-secondary" onclick="startEdit(' + t.id + ')">Edit</button> <button class="btn btn-danger" onclick="deleteTrade(' + t.id + ')">Delete</button></td></tr>';
-          }).join('') + '</tbody></table>';
-      }).catch(function() { el.innerHTML = '<p class="loading">Failed to load trades.</p>'; });
+        updateTabCount(1, list.length || 0);
+        renderBlotterTable();
+      }).catch(function() {
+        updateTabCount(1, 0);
+        el.innerHTML = '<p class="loading">Failed to load trades.</p>';
+      });
+    }
+    function renderBlotterTable() {
+      var el = document.getElementById('blotterTable');
+      if (!el) return;
+      var list = state.tradesActive || [];
+      if (!list.length) {
+        el.innerHTML = '<p class="loading">No active trades.</p>';
+        return;
+      }
+      var searchInput = document.getElementById('blotterSearch');
+      if (searchInput && !searchInput._bound) {
+        searchInput.addEventListener('input', renderBlotterTable);
+        searchInput._bound = true;
+      }
+      var term = searchInput ? (searchInput.value || '').trim().toLowerCase() : '';
+      var filtered = list;
+      if (term) {
+        filtered = list.filter(function(t) {
+          var ticker = (t.ticker || '').toString().toLowerCase();
+          var trader = (t.trader_name || '').toString().toLowerCase();
+          var strategy = (t.strategy || '').toString().toLowerCase();
+          var notes = (t.notes || '').toString().toLowerCase();
+          return ticker.indexOf(term) !== -1 || trader.indexOf(term) !== -1 || strategy.indexOf(term) !== -1 || notes.indexOf(term) !== -1;
+        });
+      }
+      if (!filtered.length) {
+        el.innerHTML = '<p class="loading">No matching trades.</p>';
+        return;
+      }
+      var sort = state.blotterSort || { col: 'id', asc: true };
+      var sorted = sortData(filtered, sort.col, sort.asc);
+      var header = '<thead><tr>' +
+        sortHeader('Id', 'id', sort, 'toggleBlotterSort') +
+        sortHeader('Ticker', 'ticker', sort, 'toggleBlotterSort') +
+        sortHeader('Side', 'side', sort, 'toggleBlotterSort') +
+        sortHeader('Qty', 'quantity', sort, 'toggleBlotterSort') +
+        sortHeader('Price', 'price', sort, 'toggleBlotterSort') +
+        sortHeader('Trader', 'trader_name', sort, 'toggleBlotterSort') +
+        sortHeader('Strategy', 'strategy', sort, 'toggleBlotterSort') +
+        sortHeader('Notes', 'notes', sort, 'toggleBlotterSort') +
+        '<th>Actions</th></tr></thead>';
+      el.innerHTML = '<table>' + header + '<tbody>' +
+        sorted.map(function(t) {
+          if (state.editingTradeId === t.id) {
+            return '<tr data-id="' + t.id + '"><td>' + t.id + '</td><td><input value="' + t.ticker + '" id="eTicker"></td><td><select id="eSide"><option value="BUY"' + (t.side==='BUY'?' selected':'') + '>BUY</option><option value="SELL"' + (t.side==='SELL'?' selected':'') + '>SELL</option></select></td><td><input type="number" value="' + t.quantity + '" id="eQty"></td><td><input type="number" value="' + t.price + '" id="ePrice"></td><td><input value="' + t.trader_name + '" id="eTrader"></td><td><input value="' + (t.strategy||'') + '" id="eStrategy"></td><td><input value="' + (t.notes||'') + '" id="eNotes"></td><td><button class="btn btn-primary" onclick="saveEdit(' + t.id + ')">Save</button> <button class="btn btn-secondary" onclick="cancelEdit()">Cancel</button></td></tr>';
+          }
+          return '<tr data-id="' + t.id + '"><td>' + t.id + '</td><td>' + t.ticker + '</td><td>' + sideBadge(t.side) + '</td><td>' + t.quantity + '</td><td>' + t.price + '</td><td>' + t.trader_name + '</td><td>' + (t.strategy||'') + '</td><td>' + (t.notes||'') + '</td><td><button class="btn btn-secondary" onclick="startEdit(' + t.id + ')">Edit</button> <button class="btn btn-danger" onclick="deleteTrade(' + t.id + ')">Delete</button></td></tr>';
+        }).join('') + '</tbody></table>';
     }
     function startEdit(id) { state.editingTradeId = id; refreshBlotter(); }
     function cancelEdit() { state.editingTradeId = null; refreshBlotter(); }
@@ -553,12 +708,35 @@
       el.innerHTML = skeletonHTML();
       safeFetch(API_BASE + '/api/holdings').then(function(list) {
         state.holdings = list;
-        if (list.length === 0) { el.innerHTML = '<p class="loading">No holdings (no active trades or all flat).</p>'; return; }
-        el.innerHTML = '<table><thead><tr><th>Ticker</th><th>Net Quantity</th><th>Avg Cost</th><th>Current Price</th><th>Market Value</th><th>Unrealized P&L</th></tr></thead><tbody>' +
-          list.map(function(h) {
-            return '<tr><td>' + h.ticker + '</td><td>' + h.net_quantity + '</td><td>' + h.avg_cost + '</td><td>' + h.current_price + '</td><td>$' + Number(h.market_value).toLocaleString(undefined, {minimumFractionDigits: 2}) + '</td><td class="' + (h.unrealized_pnl >= 0 ? 'positive' : 'negative') + '">$' + Number(h.unrealized_pnl).toLocaleString(undefined, {minimumFractionDigits: 2}) + '</td></tr>';
-          }).join('') + '</tbody></table>';
-      }).catch(function() { el.innerHTML = '<p class="loading">Failed to load holdings.</p>'; });
+        updateTabCount(2, list.length || 0);
+        renderHoldingsTable();
+      }).catch(function() {
+        updateTabCount(2, 0);
+        el.innerHTML = '<p class="loading">Failed to load holdings.</p>';
+      });
+    }
+    function renderHoldingsTable() {
+      var el = document.getElementById('holdingsTable');
+      if (!el) return;
+      var list = state.holdings || [];
+      if (!list.length) {
+        el.innerHTML = '<p class="loading">No holdings (no active trades or all flat).</p>';
+        return;
+      }
+      var sort = state.holdingsSort || { col: 'ticker', asc: true };
+      var sorted = sortData(list, sort.col, sort.asc);
+      var header = '<thead><tr>' +
+        sortHeader('Ticker', 'ticker', sort, 'toggleHoldingsSort') +
+        sortHeader('Net Quantity', 'net_quantity', sort, 'toggleHoldingsSort') +
+        sortHeader('Avg Cost', 'avg_cost', sort, 'toggleHoldingsSort') +
+        sortHeader('Current Price', 'current_price', sort, 'toggleHoldingsSort') +
+        sortHeader('Market Value', 'market_value', sort, 'toggleHoldingsSort') +
+        sortHeader('Unrealized P&L', 'unrealized_pnl', sort, 'toggleHoldingsSort') +
+        '</tr></thead>';
+      el.innerHTML = '<table>' + header + '<tbody>' +
+        sorted.map(function(h) {
+          return '<tr><td>' + h.ticker + '</td><td>' + h.net_quantity + '</td><td>' + h.avg_cost + '</td><td>' + h.current_price + '</td><td>$' + Number(h.market_value).toLocaleString(undefined, {minimumFractionDigits: 2}) + '</td><td class="' + (h.unrealized_pnl >= 0 ? 'positive' : 'negative') + '">$' + Number(h.unrealized_pnl).toLocaleString(undefined, {minimumFractionDigits: 2}) + '</td></tr>';
+        }).join('') + '</tbody></table>';
     }
 
     function refreshCompliance() {
@@ -568,16 +746,24 @@
       elRej.innerHTML = skeletonHTML();
       safeFetch(API_BASE + '/api/trades?status=ACTIVE').then(function(list) {
         state.tradesActive = list;
+        updateTabCount(3, (state.tradesActive || []).length + (state.tradesRejected || []).length);
         if (list.length === 0) elActive.innerHTML = '<p class="loading">No active trades for review.</p>';
         else elActive.innerHTML = '<table><thead><tr><th>Id</th><th>Ticker</th><th>Side</th><th>Qty</th><th>Price</th><th>Trader</th><th>Actions</th></tr></thead><tbody>' +
           list.map(function(t) { return '<tr><td>' + t.id + '</td><td>' + t.ticker + '</td><td>' + sideBadge(t.side) + '</td><td>' + t.quantity + '</td><td>' + t.price + '</td><td>' + t.trader_name + '</td><td><button class="btn btn-danger" onclick="openRejectModal(' + t.id + ')">Reject</button></td></tr>'; }).join('') + '</tbody></table>';
-      }).catch(function() { elActive.innerHTML = '<p class="loading">Failed to load.</p>'; });
+      }).catch(function() {
+        updateTabCount(3, (state.tradesActive || []).length + (state.tradesRejected || []).length);
+        elActive.innerHTML = '<p class="loading">Failed to load.</p>';
+      });
       safeFetch(API_BASE + '/api/trades?status=REJECTED').then(function(list) {
         state.tradesRejected = list;
+        updateTabCount(3, (state.tradesActive || []).length + (state.tradesRejected || []).length);
         if (list.length === 0) elRej.innerHTML = '<p class="loading">No rejected trades.</p>';
         else elRej.innerHTML = '<table><thead><tr><th>Id</th><th>Ticker</th><th>Side</th><th>Qty</th><th>Price</th><th>Trader</th><th>Rejection Reason</th><th>Rejected At</th><th>Actions</th></tr></thead><tbody>' +
           list.map(function(t) { return '<tr><td>' + t.id + '</td><td>' + t.ticker + '</td><td>' + sideBadge(t.side) + '</td><td>' + t.quantity + '</td><td>' + t.price + '</td><td>' + t.trader_name + '</td><td>' + (t.rejection_reason||'') + '</td><td>' + (t.rejected_at||'') + '</td><td><button class="btn btn-primary" onclick="reinstateTrade(' + t.id + ')">Reinstate</button></td></tr>'; }).join('') + '</tbody></table>';
-      }).catch(function() { elRej.innerHTML = '<p class="loading">Failed to load.</p>'; });
+      }).catch(function() {
+        updateTabCount(3, (state.tradesActive || []).length + (state.tradesRejected || []).length);
+        elRej.innerHTML = '<p class="loading">Failed to load.</p>';
+      });
     }
     function openRejectModal(id) { state.rejectTradeId = id; document.getElementById('rejectReason').value = ''; document.getElementById('rejectModal').classList.add('show'); }
     function hideRejectModal() { state.rejectTradeId = null; document.getElementById('rejectModal').classList.remove('show'); }
@@ -616,15 +802,40 @@
       el.innerHTML = skeletonHTML();
       safeFetch(API_BASE + '/api/securities').then(function(list) {
         state.securities = list;
-        if (list.length === 0) { el.innerHTML = '<p class="loading">No securities.</p>'; state.editingSecId = null; return; }
-        el.innerHTML = '<table><thead><tr><th>Id</th><th>Ticker</th><th>Name</th><th>Sector</th><th>Price</th><th>Live Price</th><th>Shares Out.</th><th>Actions</th></tr></thead><tbody>' +
-          list.map(function(s) {
-            if (state.editingSecId === s.id) {
-              return '<tr data-id="' + s.id + '"><td>' + s.id + '</td><td><input value="' + s.ticker + '" id="sTicker" style="max-width:100px"></td><td><input value="' + s.name + '" id="sName"></td><td><input value="' + (s.sector||'') + '" id="sSector"></td><td><input type="number" value="' + s.price + '" id="sPrice" step="0.01"></td><td id="secLive-' + s.id + '">N/A</td><td><input type="number" value="' + (s.shares_outstanding != null ? s.shares_outstanding : '') + '" id="sShares" placeholder="Optional"></td><td><button class="btn btn-primary" onclick="saveSecurityEdit(' + s.id + ')">Save</button> <button class="btn btn-secondary" onclick="cancelSecurityEdit()">Cancel</button></td></tr>';
-            }
-            return '<tr><td>' + s.id + '</td><td>' + s.ticker + '</td><td>' + s.name + '</td><td>' + (s.sector||'') + '</td><td>' + s.price + '</td><td id="secLive-' + s.id + '">N/A</td><td>' + (s.shares_outstanding != null ? s.shares_outstanding : '') + '</td><td><button class="btn btn-secondary" onclick="startSecurityEdit(' + s.id + ')">Edit</button> <button class="btn btn-danger" onclick="deleteSecurity(' + s.id + ')">Delete</button> <button class="btn btn-secondary" onclick="refreshLivePrice(' + s.id + ', \'' + s.ticker + '\')">Live</button></td></tr>';
-          }).join('') + '</tbody></table>';
-      }).catch(function() { el.innerHTML = '<p class="loading">Failed to load.</p>'; });
+        updateTabCount(4, list.length || 0);
+        renderSecuritiesTable();
+      }).catch(function() {
+        updateTabCount(4, 0);
+        el.innerHTML = '<p class="loading">Failed to load.</p>';
+      });
+    }
+    function renderSecuritiesTable() {
+      var el = document.getElementById('securitiesTable');
+      if (!el) return;
+      var list = state.securities || [];
+      if (!list.length) {
+        el.innerHTML = '<p class="loading">No securities.</p>';
+        state.editingSecId = null;
+        return;
+      }
+      var sort = state.securitiesSort || { col: 'id', asc: true };
+      var sorted = sortData(list, sort.col, sort.asc);
+      var header = '<thead><tr>' +
+        sortHeader('Id', 'id', sort, 'toggleSecuritiesSort') +
+        sortHeader('Ticker', 'ticker', sort, 'toggleSecuritiesSort') +
+        sortHeader('Name', 'name', sort, 'toggleSecuritiesSort') +
+        sortHeader('Sector', 'sector', sort, 'toggleSecuritiesSort') +
+        sortHeader('Price', 'price', sort, 'toggleSecuritiesSort') +
+        '<th>Live Price</th>' +
+        sortHeader('Shares Out.', 'shares_outstanding', sort, 'toggleSecuritiesSort') +
+        '<th>Actions</th></tr></thead>';
+      el.innerHTML = '<table>' + header + '<tbody>' +
+        sorted.map(function(s) {
+          if (state.editingSecId === s.id) {
+            return '<tr data-id="' + s.id + '"><td>' + s.id + '</td><td><input value="' + s.ticker + '" id="sTicker" style="max-width:100px"></td><td><input value="' + s.name + '" id="sName"></td><td><input value="' + (s.sector||'') + '" id="sSector"></td><td><input type="number" value="' + s.price + '" id="sPrice" step="0.01"></td><td id="secLive-' + s.id + '">N/A</td><td><input type="number" value="' + (s.shares_outstanding != null ? s.shares_outstanding : '') + '" id="sShares" placeholder="Optional"></td><td><button class="btn btn-primary" onclick="saveSecurityEdit(' + s.id + ')">Save</button> <button class="btn btn-secondary" onclick="cancelSecurityEdit()">Cancel</button></td></tr>';
+          }
+          return '<tr><td>' + s.id + '</td><td>' + s.ticker + '</td><td>' + s.name + '</td><td>' + (s.sector||'') + '</td><td>' + s.price + '</td><td id="secLive-' + s.id + '">N/A</td><td>' + (s.shares_outstanding != null ? s.shares_outstanding : '') + '</td><td><button class="btn btn-secondary" onclick="startSecurityEdit(' + s.id + ')">Edit</button> <button class="btn btn-danger" onclick="deleteSecurity(' + s.id + ')">Delete</button> <button class="btn btn-secondary" onclick="refreshLivePrice(' + s.id + ', \'' + s.ticker + '\')">Live</button></td></tr>';
+        }).join('') + '</tbody></table>';
     }
     function startSecurityEdit(id) { state.editingSecId = id; refreshSecurities(); }
     function cancelSecurityEdit() { state.editingSecId = null; refreshSecurities(); }
@@ -684,6 +895,7 @@
       el.innerHTML = skeletonHTML();
       safeFetch(API_BASE + '/api/traders').then(function(list) {
         state.traders = list;
+        updateTabCount(5, list.length || 0);
         if (list.length === 0) { el.innerHTML = '<p class="loading">No traders.</p>'; state.editingTraderId = null; return; }
         el.innerHTML = '<table><thead><tr><th>Id</th><th>Name</th><th>Desk</th><th>Email</th><th>Actions</th></tr></thead><tbody>' +
           list.map(function(t) {
@@ -692,7 +904,10 @@
             }
             return '<tr><td>' + t.id + '</td><td>' + t.name + '</td><td>' + (t.desk||'') + '</td><td>' + (t.email||'') + '</td><td><button class="btn btn-secondary" onclick="startTraderEdit(' + t.id + ')">Edit</button> <button class="btn btn-danger" onclick="deleteTrader(' + t.id + ')">Delete</button></td></tr>';
           }).join('') + '</tbody></table>';
-      }).catch(function() { el.innerHTML = '<p class="loading">Failed to load.</p>'; });
+      }).catch(function() {
+        updateTabCount(5, 0);
+        el.innerHTML = '<p class="loading">Failed to load.</p>';
+      });
     }
     function startTraderEdit(id) { state.editingTraderId = id; refreshTraders(); }
     function cancelTraderEdit() { state.editingTraderId = null; refreshTraders(); }
@@ -737,10 +952,14 @@
       el.innerHTML = skeletonHTML();
       safeFetch(API_BASE + '/api/restricted').then(function(list) {
         state.restricted = list;
+        updateTabCount(6, list.length || 0);
         if (list.length === 0) { el.innerHTML = '<p class="loading">No restricted tickers.</p>'; return; }
         el.innerHTML = '<table><thead><tr><th>Id</th><th>Ticker</th><th>Reason</th><th>Added By</th><th>Created</th><th>Actions</th></tr></thead><tbody>' +
           list.map(function(r) { return '<tr><td>' + r.id + '</td><td>' + r.ticker + '</td><td>' + (r.reason||'') + '</td><td>' + (r.added_by||'') + '</td><td>' + (r.created_at||'') + '</td><td><button class="btn btn-danger" onclick="deleteRestricted(' + r.id + ')">Remove</button></td></tr>'; }).join('') + '</tbody></table>';
-      }).catch(function() { el.innerHTML = '<p class="loading">Failed to load.</p>'; });
+      }).catch(function() {
+        updateTabCount(6, 0);
+        el.innerHTML = '<p class="loading">Failed to load.</p>';
+      });
     }
     function deleteRestricted(id) {
       safeFetch(API_BASE + '/api/restricted/' + id, { method: 'DELETE' }).then(function() { refreshRestricted(); hideError(); showSuccess('Restricted ticker removed.'); }).catch(function() {});
@@ -751,10 +970,68 @@
       el.innerHTML = skeletonHTML();
       safeFetch(API_BASE + '/api/audit').then(function(list) {
         state.audit = list;
+        updateTabCount(7, list.length || 0);
         if (list.length === 0) { el.innerHTML = '<p class="loading">No audit entries.</p>'; return; }
         el.innerHTML = '<table><thead><tr><th>Timestamp</th><th>Action</th><th>Entity Type</th><th>Entity Id</th><th>Details</th></tr></thead><tbody>' +
           list.map(function(a) { return '<tr><td>' + (a.timestamp||'') + '</td><td>' + (a.action||'') + '</td><td>' + (a.entity_type||'') + '</td><td>' + (a.entity_id!=null ? a.entity_id : '') + '</td><td>' + (a.details||'') + '</td></tr>'; }).join('') + '</tbody></table>';
-      }).catch(function() { el.innerHTML = '<p class="loading">Failed to load.</p>'; });
+      }).catch(function() {
+        updateTabCount(7, 0);
+        el.innerHTML = '<p class="loading">Failed to load.</p>';
+      });
+    }
+
+    function exportBlotterCSV() {
+      var list = state.tradesActive || [];
+      var headers = ['Id', 'Ticker', 'Side', 'Quantity', 'Price', 'Trader', 'Strategy', 'Notes'];
+      var rows = list.map(function(t) {
+        return [t.id, t.ticker, t.side, t.quantity, t.price, t.trader_name, t.strategy || '', t.notes || ''];
+      });
+      exportCSV('blotter_active.csv', headers, rows);
+    }
+
+    function exportHoldingsCSV() {
+      var list = state.holdings || [];
+      var headers = ['Ticker', 'Net Quantity', 'Avg Cost', 'Current Price', 'Market Value', 'Unrealized P&L'];
+      var rows = list.map(function(h) {
+        return [h.ticker, h.net_quantity, h.avg_cost, h.current_price, h.market_value, h.unrealized_pnl];
+      });
+      exportCSV('holdings.csv', headers, rows);
+    }
+
+    function exportSecuritiesCSV() {
+      var list = state.securities || [];
+      var headers = ['Id', 'Ticker', 'Name', 'Sector', 'Price', 'Shares Outstanding'];
+      var rows = list.map(function(s) {
+        return [s.id, s.ticker, s.name, s.sector || '', s.price, s.shares_outstanding != null ? s.shares_outstanding : ''];
+      });
+      exportCSV('securities.csv', headers, rows);
+    }
+
+    function exportTradersCSV() {
+      var list = state.traders || [];
+      var headers = ['Id', 'Name', 'Desk', 'Email'];
+      var rows = list.map(function(t) {
+        return [t.id, t.name, t.desk || '', t.email || ''];
+      });
+      exportCSV('traders.csv', headers, rows);
+    }
+
+    function exportRestrictedCSV() {
+      var list = state.restricted || [];
+      var headers = ['Id', 'Ticker', 'Reason', 'Added By', 'Created'];
+      var rows = list.map(function(r) {
+        return [r.id, r.ticker, r.reason || '', r.added_by || '', r.created_at || ''];
+      });
+      exportCSV('restricted.csv', headers, rows);
+    }
+
+    function exportAuditCSV() {
+      var list = state.audit || [];
+      var headers = ['Timestamp', 'Action', 'Entity Type', 'Entity Id', 'Details'];
+      var rows = list.map(function(a) {
+        return [a.timestamp || '', a.action || '', a.entity_type || '', a.entity_id != null ? a.entity_id : '', a.details || ''];
+      });
+      exportCSV('audit.csv', headers, rows);
     }
 
     function boot() {
