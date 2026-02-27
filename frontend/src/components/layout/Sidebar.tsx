@@ -1,4 +1,6 @@
 import { NavLink } from "react-router-dom";
+import { LogOut } from "lucide-react";
+import { useAuth } from "../../contexts/AuthContext";
 import {
   LayoutDashboard,
   FileText,
@@ -24,6 +26,8 @@ const navItems = [
 ];
 
 export function Sidebar() {
+  const { user, logout } = useAuth();
+
   return (
     <aside className="flex h-screen w-64 flex-col border-r border-slate-800 bg-slate-900">
       <div className="px-4 py-4 text-lg font-semibold text-green-400">
@@ -51,6 +55,20 @@ export function Sidebar() {
           );
         })}
       </nav>
+      <div className="border-t border-slate-800 p-4">
+        {user && (
+          <div className="mb-2 text-xs text-slate-400">
+            Signed in as <span className="font-medium text-slate-200">{user.username}</span>
+          </div>
+        )}
+        <button
+          onClick={logout}
+          className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-slate-300 hover:bg-slate-800 hover:text-white"
+        >
+          <LogOut className="h-4 w-4" />
+          <span>Logout</span>
+        </button>
+      </div>
     </aside>
   );
 }

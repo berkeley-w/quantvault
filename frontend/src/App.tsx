@@ -1,5 +1,6 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 import { Layout } from "./components/layout/Layout";
+import { ProtectedRoute } from "./components/auth/ProtectedRoute";
 import { DashboardPage } from "./pages/DashboardPage";
 import { BlotterPage } from "./pages/BlotterPage";
 import { HoldingsPage } from "./pages/HoldingsPage";
@@ -9,11 +10,21 @@ import { TradersPage } from "./pages/TradersPage";
 import { RestrictedPage } from "./pages/RestrictedPage";
 import { AuditPage } from "./pages/AuditPage";
 import { AnalyticsPage } from "./pages/AnalyticsPage";
+import { LoginPage } from "./pages/LoginPage";
+import { RegisterPage } from "./pages/RegisterPage";
 
 function App() {
   return (
     <Routes>
-      <Route element={<Layout />}>
+      <Route path="/login" element={<LoginPage />} />
+      <Route path="/register" element={<RegisterPage />} />
+      <Route
+        element={
+          <ProtectedRoute>
+            <Layout />
+          </ProtectedRoute>
+        }
+      >
         <Route path="/" element={<DashboardPage />} />
         <Route path="/blotter" element={<BlotterPage />} />
         <Route path="/holdings" element={<HoldingsPage />} />

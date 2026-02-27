@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: quantvault
+    runtime: docker
+    plan: free
+    envVars:
+      - key: DATABASE_URL
+        value: sqlite:///./quantvault.db
+      - key: ALPHA_VANTAGE_API_KEY
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: PORT
+        value: "8000"
+    healthCheckPath: /health
+
