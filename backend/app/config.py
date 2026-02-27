@@ -8,6 +8,12 @@ class Settings(BaseSettings):
 
     DATABASE_URL: str = "sqlite:///./quantvault.db"
     ALPHA_VANTAGE_API_KEY: str = ""
+
+    # JWT/auth settings (mirrors legacy config.py defaults/env)
+    JWT_SECRET: str = "CHANGE-ME-IN-PRODUCTION"
+    JWT_EXPIRY_HOURS: int = 24
+
+    # Frontend / CORS
     FRONTEND_DIR: str = "../frontend"
     CORS_ORIGINS: List[str] = ["*"]
 

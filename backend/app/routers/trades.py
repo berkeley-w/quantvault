@@ -6,9 +6,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.core.audit import audit
-from app.core.helpers import serialize_dt
+from app.core.auth import get_current_user, require_admin
+from app.core.helpers import apply_sorting, serialize_dt
 from app.database import get_db
-from app.models import RestrictedList, Trade
+from app.models import RestrictedList, Trade, User
 from app.schemas.trade import RejectRequest, TradeCreate, TradeResponse, TradeUpdate
 
 
@@ -20,13 +21,29 @@ router = APIRouter(prefix="/api/trades", tags=["Trades"])
 @router.get("", response_model=List[TradeResponse])
 def list_trades(
     status: str = Query("ALL", description="ACTIVE, REJECTED, or ALL"),
+    sort: str = Query("created_at", description="Sort field"),
+    order: str = Query("desc", description="Sort order: asc or desc"),
+    ticker: str | None = Query(None, description="Filter by ticker"),
     db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
 ):
-    q = db.query(Trade).order_by(Trade.created_at.desc())
+    _ = user
+    sort = sort.lower()
+    order = order.lower()
+    sort_fields = {
+        "created_at": Trade.created_at,
+        "ticker": Trade.ticker,
+        "price": Trade.price,
+        "quantity": Trade.quantity,
+    }
+    q = db.query(Trade)
     if status.upper() == "ACTIVE":
         q = q.filter(Trade.status == "ACTIVE")
     elif status.upper() == "REJECTED":
         q = q.filter(Trade.status == "REJECTED")
+    if ticker:
+        q = q.filter(Trade.ticker == ticker.upper().strip())
+    q = apply_sorting(q, Trade, sort, order, sort_fields)
     rows = q.all()
     return [
         {
@@ -49,7 +66,11 @@ def list_trades(
 
 
 @router.post("", response_model=TradeResponse)
-def create_trade(body: TradeCreate, db: Session = Depends(get_db)):
+def create_trade(
+    body: TradeCreate,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
     restricted = (
         db.query(RestrictedList)
         .filter(RestrictedList.ticker == body.ticker.upper().strip())
@@ -82,6 +103,7 @@ def create_trade(body: TradeCreate, db: Session = Depends(get_db)):
         "trade",
         t.id,
         f"{t.side} {t.quantity} {t.ticker} @ {t.price} by {t.trader_name}",
+        user=user,
     )
     return {
         "id": t.id,
@@ -101,7 +123,12 @@ def create_trade(body: TradeCreate, db: Session = Depends(get_db)):
 
 
 @router.put("/{id}", response_model=TradeResponse)
-def update_trade(id: int, body: TradeUpdate, db: Session = Depends(get_db)):
+def update_trade(
+    id: int,
+    body: TradeUpdate,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
     t = db.query(Trade).filter(Trade.id == id).first()
     if not t:
         raise HTTPException(status_code=404, detail="Trade not found")
@@ -138,6 +165,7 @@ def update_trade(id: int, body: TradeUpdate, db: Session = Depends(get_db)):
         "trade",
         t.id,
         f"Updated trade {t.id}: " + ", ".join(changes),
+        user=user,
     )
     return {
         "id": t.id,
@@ -157,18 +185,27 @@ def update_trade(id: int, body: TradeUpdate, db: Session = Depends(get_db)):
 
 
 @router.delete("/{id}")
-def delete_trade(id: int, db: Session = Depends(get_db)):
+def delete_trade(
+    id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
     t = db.query(Trade).filter(Trade.id == id).first()
     if not t:
         raise HTTPException(status_code=404, detail="Trade not found")
     db.delete(t)
     db.commit()
-    audit(db, "TRADE_DELETED", "trade", id, f"Deleted trade {id}")
+    audit(db, "TRADE_DELETED", "trade", id, f"Deleted trade {id}", user=user)
     return {"detail": "Trade deleted"}
 
 
 @router.post("/{id}/reject")
-def reject_trade(id: int, body: RejectRequest, db: Session = Depends(get_db)):
+def reject_trade(
+    id: int,
+    body: RejectRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_admin),
+):
     t = db.query(Trade).filter(Trade.id == id).first()
     if not t:
         raise HTTPException(status_code=404, detail="Trade not found")
@@ -183,12 +220,17 @@ def reject_trade(id: int, body: RejectRequest, db: Session = Depends(get_db)):
         "trade",
         t.id,
         f"Rejected trade {t.id}: {t.rejection_reason}",
+        user=user,
     )
     return {"detail": "Trade rejected", "id": t.id, "status": t.status}
 
 
 @router.post("/{id}/reinstate")
-def reinstate_trade(id: int, db: Session = Depends(get_db)):
+def reinstate_trade(
+    id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_admin),
+):
     t = db.query(Trade).filter(Trade.id == id).first()
     if not t:
         raise HTTPException(status_code=404, detail="Trade not found")
@@ -197,6 +239,13 @@ def reinstate_trade(id: int, db: Session = Depends(get_db)):
     t.rejected_at = None
     db.commit()
     db.refresh(t)
-    audit(db, "TRADE_REINSTATED", "trade", t.id, f"Reinstated trade {t.id}")
+    audit(
+        db,
+        "TRADE_REINSTATED",
+        "trade",
+        t.id,
+        f"Reinstated trade {t.id}",
+        user=user,
+    )
     return {"detail": "Trade reinstated", "id": t.id, "status": t.status}
 
