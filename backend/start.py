@@ -1,5 +1,6 @@
 import os
 import uvicorn
+
 from models import init_db
 
 init_db()
