@@ -1,15 +1,18 @@
-from pathlib import Path
-from dotenv import load_dotenv
-
-load_dotenv(Path(__file__).resolve().parent.parent / ".env")
-import os
+import logging
 import time
-from typing import Optional, Dict, Any
+from typing import Any, Dict, Optional
 
 import requests
+from pathlib import Path
+
+from app.config import get_settings
 
 
-_API_KEY = os.getenv("ALPHA_VANTAGE_API_KEY")
+logger = logging.getLogger(__name__)
+
+settings = get_settings()
+
+_API_KEY = settings.ALPHA_VANTAGE_API_KEY
 _BASE_URL = "https://www.alphavantage.co/query"
 _CACHE_TTL_SECONDS = 15 * 60  # 15 minutes
 
@@ -83,7 +86,11 @@ def get_quote(ticker: str) -> Optional[Dict[str, Any]]:
 
         price = float(quote.get("05. price") or 0.0)
         change = float(quote.get("09. change") or 0.0)
-        change_pct_raw = quote.get("10. change percent") or quote.get("10. change percent".upper()) or "0%"
+        change_pct_raw = (
+            quote.get("10. change percent")
+            or quote.get("10. change percent".upper())
+            or "0%"
+        )
         # change percent is like "0.0679%"
         try:
             change_percent = float(str(change_pct_raw).replace("%", "").strip())
@@ -110,7 +117,7 @@ def get_quote(ticker: str) -> Optional[Dict[str, Any]]:
 
 def _to_float(value: Any) -> Optional[float]:
     """
-    Parse Alpha Vantage numeric fields, handling \"None\" and empty strings.
+    Parse Alpha Vantage numeric fields, handling "None" and empty strings.
     """
     if value is None:
         return None
