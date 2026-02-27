@@ -1,5 +1,6 @@
 import os
 from datetime import datetime
+from pathlib import Path
 from fastapi import FastAPI, Depends, HTTPException, Query, BackgroundTasks
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -34,8 +35,9 @@ from datetime import date, timedelta, datetime
 
 load_dotenv()
 
-FRONTEND_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "../frontend/index.html"))
-STATIC_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "../frontend"))
+BASE_DIR = Path(__file__).resolve().parent
+FRONTEND_DIR = BASE_DIR.parent / "frontend"
+FRONTEND_DIST = FRONTEND_DIR / "dist"
 
 app = FastAPI()
 
@@ -47,7 +49,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+if FRONTEND_DIST.exists():
+    # Serve built Vite assets
+    assets_dir = FRONTEND_DIST / "assets"
+    if assets_dir.exists():
+        app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
 
 
 @app.get("/health", tags=["System"])
@@ -164,12 +170,6 @@ class RestrictedCreate(BaseModel):
 
 class RejectRequest(BaseModel):
     rejection_reason: str
-
-
-# ============== Serve frontend ==============
-@app.get("/", response_class=FileResponse)
-def serve_frontend():
-    return FileResponse(FRONTEND_PATH, media_type="text/html")
 
 
 # ============== Securities ==============
@@ -1245,4 +1245,15 @@ def get_snapshots(db: Session = Depends(get_db)):
             for r in rows
         ]
     }
+
+
+# ============== SPA catch-all (must be last) ==============
+if FRONTEND_DIST.exists():
+
+    @app.get("/{full_path:path}", response_class=FileResponse)
+    def serve_spa(full_path: str):
+        file_path = FRONTEND_DIST / full_path
+        if file_path.is_file():
+            return FileResponse(str(file_path))
+        return FileResponse(str(FRONTEND_DIST / "index.html"))
 
