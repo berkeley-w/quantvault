@@ -391,44 +391,41 @@
       var btn = document.getElementById('perfRefreshBtn');
       if (!btn) { loadPortfolioPerformance(); return; }
       btn.disabled = true;
-      var original = btn.innerHTML;
-      btn.innerHTML = '⏳ Refreshing prices (up to 1 min)...';
-      safeFetch(API_BASE + '/api/prices/refresh', { method: 'POST' }).then(function() {
-        return safeFetch(API_BASE + '/api/portfolio/performance');
-      }).then(function(p) {
-        state.portfolioPerf = p;
-        var summaryEl = document.getElementById('dashboardPerfSummary');
-        var tableEl = document.getElementById('dashboardPerfTable');
-        summaryEl.innerHTML =
-          '<div class="metric"><div class="label">Total Market Value</div><div class="value">$' +
-          Number(p.total_market_value).toLocaleString(undefined, {minimumFractionDigits: 2}) + '</div></div>' +
-          '<div class="metric"><div class="label">Total Cost Basis</div><div class="value">$' +
-          Number(p.total_cost_basis).toLocaleString(undefined, {minimumFractionDigits: 2}) + '</div></div>' +
-          '<div class="metric"><div class="label">Total P&L</div><div class="value ' +
-          (p.total_pnl >= 0 ? 'positive' : 'negative') + '">$' +
-          Number(p.total_pnl).toLocaleString(undefined, {minimumFractionDigits: 2}) + '</div></div>' +
-          '<div class="metric"><div class="label">Total P&L %</div><div class="value ' +
-          (p.total_pnl >= 0 ? 'positive' : 'negative') + '">' +
-          (p.total_pnl_pct != null ? p.total_pnl_pct.toFixed(2) + '%' : 'N/A') + '</div></div>';
-        var rows = (p.breakdown || []).map(function(b) {
-          var cls = b.pnl >= 0 ? 'positive' : 'negative';
-          return '<tr><td>' + b.ticker + '</td><td>' + b.net_quantity + '</td><td>' + b.avg_cost +
-            '</td><td>' + b.current_price + '</td><td>$' + Number(b.cost_basis).toLocaleString(undefined, {minimumFractionDigits: 2}) +
-            '</td><td>$' + Number(b.market_value).toLocaleString(undefined, {minimumFractionDigits: 2}) +
-            '</td><td class=\"' + cls + '\">$' + Number(b.pnl).toLocaleString(undefined, {minimumFractionDigits: 2}) +
-            '</td><td class=\"' + cls + '\">' + (b.pnl_pct != null ? b.pnl_pct.toFixed(2) + '%' : 'N/A') + '</td></tr>';
-        }).join('');
-        var tableEl = document.getElementById('dashboardPerfTable');
-        if (!rows) {
-          tableEl.innerHTML = '<p class="loading">No active positions.</p>';
-        } else {
-          tableEl.innerHTML = '<table><thead><tr><th>Ticker</th><th>Net Qty</th><th>Avg Cost</th><th>Price</th><th>Cost Basis</th><th>Market Value</th><th>P&L</th><th>P&L %</th></tr></thead><tbody>' + rows + '</tbody></table>';
-        }
-        hideError();
-      }).catch(function() {}).finally(function() {
-        btn.disabled = false;
-        btn.innerHTML = original;
-      });
+      btn.textContent = '⏳ Refreshing...';
+
+      safeFetch(API_BASE + '/api/prices/refresh', { method: 'POST' })
+        .then(function() {
+          pollRefreshStatus();
+        })
+        .catch(function(e) {
+          if (e.message && e.message.indexOf('already in progress') !== -1) {
+            pollRefreshStatus();
+          } else {
+            btn.disabled = false;
+            btn.textContent = 'Refresh Prices & Performance';
+          }
+        });
+    }
+
+    function pollRefreshStatus() {
+      var btn = document.getElementById('perfRefreshBtn');
+      var interval = setInterval(function() {
+        fetch(API_BASE + '/api/prices/refresh/status')
+          .then(function(r) { return r.json(); })
+          .then(function(data) {
+            if (!data.running) {
+              clearInterval(interval);
+              btn.disabled = false;
+              btn.textContent = 'Refresh Prices & Performance';
+              refreshDashboard();
+            }
+          })
+          .catch(function() {
+            clearInterval(interval);
+            btn.disabled = false;
+            btn.textContent = 'Refresh Prices & Performance';
+          });
+      }, 5000);
     }
 
     function fillBlotterDropdowns() {
