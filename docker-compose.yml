@@ -1,0 +1,17 @@
+version: "3.8"
+
+services:
+  app:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=sqlite:///./quantvault.db
+      - ALPHA_VANTAGE_API_KEY=${ALPHA_VANTAGE_API_KEY}
+      - JWT_SECRET=${JWT_SECRET}
+    volumes:
+      - db-data:/app/backend
+
+volumes:
+  db-data:
+

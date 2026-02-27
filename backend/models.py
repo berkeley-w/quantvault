@@ -1,5 +1,5 @@
 import os
-from sqlalchemy import Column, Integer, String, Float, DateTime, Date, Text
+from sqlalchemy import Column, Integer, String, Float, DateTime, Date, Text, Boolean
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -101,3 +101,14 @@ class PortfolioSnapshot(Base):
     total_pnl = Column(Float, nullable=False)
     total_pnl_pct = Column(Float, nullable=True)
     breakdown_json = Column(Text, nullable=False)
+
+
+class User(Base):
+    __tablename__ = "users"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    username = Column(String(64), unique=True, nullable=False, index=True)
+    email = Column(String(128), unique=True, nullable=False)
+    hashed_password = Column(String(256), nullable=False)
+    is_active = Column(Boolean, default=True, server_default="1", nullable=False)
+    role = Column(String(32), default="trader", server_default="trader", nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
