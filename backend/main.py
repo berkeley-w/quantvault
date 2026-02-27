@@ -1,5 +1,6 @@
 import os
 from datetime import datetime
+from pathlib import Path
 from fastapi import FastAPI, Depends, HTTPException, Query, BackgroundTasks
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -24,20 +25,26 @@ from models import (
     AuditLog,
     CompanyOverview,
     PortfolioSnapshot,
-    SessionLocal,
     init_db,
 )
-from services import get_quote, get_company_overview
+from services.alpha_vantage import get_quote, get_company_overview
+from database import get_db
+from core.auth import get_current_user, require_admin
+from models import User
+from routers import auth_router
 import time
 import json
 from datetime import date, timedelta, datetime
 
 load_dotenv()
 
-FRONTEND_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "../frontend/index.html"))
-STATIC_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "../frontend"))
+BASE_DIR = Path(__file__).resolve().parent
+FRONTEND_DIR = BASE_DIR.parent / "frontend"
+FRONTEND_DIST = FRONTEND_DIR / "dist"
 
 app = FastAPI()
+
+app.include_router(auth_router)
 
 app.add_middleware(
     CORSMiddleware,
@@ -47,20 +54,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+if FRONTEND_DIST.exists():
+    # Serve built Vite assets
+    assets_dir = FRONTEND_DIST / "assets"
+    if assets_dir.exists():
+        app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
 
 
 @app.get("/health", tags=["System"])
 def health_check():
     return {"status": "healthy", "version": "1.0.0"}
-
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
 
 def _dt(v):
     if v is None:
@@ -166,18 +169,13 @@ class RejectRequest(BaseModel):
     rejection_reason: str
 
 
-# ============== Serve frontend ==============
-@app.get("/", response_class=FileResponse)
-def serve_frontend():
-    return FileResponse(FRONTEND_PATH, media_type="text/html")
-
-
 # ============== Securities ==============
 @app.get("/api/securities")
 def get_securities(
     sort: str = Query("ticker", description="Sort field"),
     order: str = Query("asc", description="Sort order: asc or desc"),
     db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
 ):
     sort = sort.lower()
     order = order.lower()
@@ -207,7 +205,11 @@ def get_securities(
 
 
 @app.post("/api/securities")
-def create_security(body: SecurityCreate, db: Session = Depends(get_db)):
+def create_security(
+    body: SecurityCreate,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_admin),
+):
     existing = db.query(Security).filter(Security.ticker == body.ticker).first()
     if existing:
         raise HTTPException(status_code=400, detail=f"Security with ticker {body.ticker} already exists")
@@ -219,14 +221,26 @@ def create_security(body: SecurityCreate, db: Session = Depends(get_db)):
         shares_outstanding=body.shares_outstanding,
     )
     db.add(s)
-    audit(db, "SECURITY_ADDED", "security", s.id, f"Added security {s.ticker} - {s.name}")
+    audit(
+        db,
+        "SECURITY_ADDED",
+        "security",
+        s.id,
+        f"Added security {s.ticker} - {s.name}",
+        user=user,
+    )
     db.commit()
     db.refresh(s)
     return {"id": s.id, "ticker": s.ticker, "name": s.name, "sector": s.sector, "price": s.price, "shares_outstanding": s.shares_outstanding, "created_at": _dt(s.created_at), "updated_at": _dt(s.updated_at)}
 
 
 @app.put("/api/securities/{id}")
-def update_security(id: int, body: SecurityUpdate, db: Session = Depends(get_db)):
+def update_security(
+    id: int,
+    body: SecurityUpdate,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_admin),
+):
     s = db.query(Security).filter(Security.id == id).first()
     if not s:
         raise NotFoundError("Security", id)
@@ -247,27 +261,48 @@ def update_security(id: int, body: SecurityUpdate, db: Session = Depends(get_db)
         s.shares_outstanding = body.shares_outstanding
         changes.append("shares_outstanding")
     s.updated_at = datetime.utcnow()
-    audit(db, "SECURITY_EDITED", "security", s.id, f"Updated {s.ticker}: " + ", ".join(changes))
+    audit(
+        db,
+        "SECURITY_EDITED",
+        "security",
+        s.id,
+        f"Updated {s.ticker}: " + ", ".join(changes),
+        user=user,
+    )
     db.commit()
     db.refresh(s)
     return {"id": s.id, "ticker": s.ticker, "name": s.name, "sector": s.sector, "price": s.price, "shares_outstanding": s.shares_outstanding, "created_at": _dt(s.created_at), "updated_at": _dt(s.updated_at)}
 
 
 @app.delete("/api/securities/{id}")
-def delete_security(id: int, db: Session = Depends(get_db)):
+def delete_security(
+    id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_admin),
+):
     s = db.query(Security).filter(Security.id == id).first()
     if not s:
         raise NotFoundError("Security", id)
     ticker = s.ticker
     db.delete(s)
-    audit(db, "SECURITY_DELETED", "security", id, f"Deleted security {ticker}")
+    audit(
+        db,
+        "SECURITY_DELETED",
+        "security",
+        id,
+        f"Deleted security {ticker}",
+        user=user,
+    )
     db.commit()
     return {"detail": "Security deleted"}
 
 
 # ============== Traders ==============
 @app.get("/api/traders")
-def get_traders(db: Session = Depends(get_db)):
+def get_traders(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
     rows = db.query(Trader).order_by(Trader.name).all()
     return [
         {"id": t.id, "name": t.name, "desk": t.desk, "email": t.email, "created_at": _dt(t.created_at), "updated_at": _dt(t.updated_at)}
@@ -276,21 +311,37 @@ def get_traders(db: Session = Depends(get_db)):
 
 
 @app.post("/api/traders")
-def create_trader(body: TraderCreate, db: Session = Depends(get_db)):
+def create_trader(
+    body: TraderCreate,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_admin),
+):
     t = Trader(
         name=body.name.strip(),
         desk=body.desk.strip() if body.desk else None,
         email=str(body.email).strip() if body.email else None,
     )
     db.add(t)
-    audit(db, "TRADER_ADDED", "trader", t.id, f"Added trader {t.name}")
+    audit(
+        db,
+        "TRADER_ADDED",
+        "trader",
+        t.id,
+        f"Added trader {t.name}",
+        user=user,
+    )
     db.commit()
     db.refresh(t)
     return {"id": t.id, "name": t.name, "desk": t.desk, "email": t.email, "created_at": _dt(t.created_at), "updated_at": _dt(t.updated_at)}
 
 
 @app.put("/api/traders/{id}")
-def update_trader(id: int, body: TraderUpdate, db: Session = Depends(get_db)):
+def update_trader(
+    id: int,
+    body: TraderUpdate,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_admin),
+):
     t = db.query(Trader).filter(Trader.id == id).first()
     if not t:
         raise NotFoundError("Trader", id)
@@ -301,20 +352,38 @@ def update_trader(id: int, body: TraderUpdate, db: Session = Depends(get_db)):
     if body.email is not None:
         t.email = str(body.email).strip() if body.email else None
     t.updated_at = datetime.utcnow()
-    audit(db, "TRADER_EDITED", "trader", t.id, f"Updated trader {t.name}")
+    audit(
+        db,
+        "TRADER_EDITED",
+        "trader",
+        t.id,
+        f"Updated trader {t.name}",
+        user=user,
+    )
     db.commit()
     db.refresh(t)
     return {"id": t.id, "name": t.name, "desk": t.desk, "email": t.email, "created_at": _dt(t.created_at), "updated_at": _dt(t.updated_at)}
 
 
 @app.delete("/api/traders/{id}")
-def delete_trader(id: int, db: Session = Depends(get_db)):
+def delete_trader(
+    id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_admin),
+):
     t = db.query(Trader).filter(Trader.id == id).first()
     if not t:
         raise NotFoundError("Trader", id)
     name = t.name
     db.delete(t)
-    audit(db, "TRADER_DELETED", "trader", id, f"Deleted trader {name}")
+    audit(
+        db,
+        "TRADER_DELETED",
+        "trader",
+        id,
+        f"Deleted trader {name}",
+        user=user,
+    )
     db.commit()
     return {"detail": "Trader deleted"}
 
@@ -327,6 +396,7 @@ def get_trades(
     order: str = Query("desc", description="Sort order: asc or desc"),
     ticker: Optional[str] = Query(None, description="Filter by ticker"),
     db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
 ):
     sort = sort.lower()
     order = order.lower()
@@ -366,7 +436,11 @@ def get_trades(
 
 
 @app.post("/api/trades")
-def create_trade(body: TradeCreate, db: Session = Depends(get_db)):
+def create_trade(
+    body: TradeCreate,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
     restricted = (
         db.query(RestrictedList)
         .filter(RestrictedList.ticker == body.ticker)
@@ -388,7 +462,14 @@ def create_trade(body: TradeCreate, db: Session = Depends(get_db)):
         status="ACTIVE",
     )
     db.add(t)
-    audit(db, "TRADE_ADDED", "trade", t.id, f"{t.side} {t.quantity} {t.ticker} @ {t.price} by {t.trader_name}")
+    audit(
+        db,
+        "TRADE_ADDED",
+        "trade",
+        t.id,
+        f"{t.side} {t.quantity} {t.ticker} @ {t.price} by {t.trader_name}",
+        user=user,
+    )
     db.commit()
     db.refresh(t)
     return {
@@ -409,7 +490,12 @@ def create_trade(body: TradeCreate, db: Session = Depends(get_db)):
 
 
 @app.put("/api/trades/{id}")
-def update_trade(id: int, body: TradeUpdate, db: Session = Depends(get_db)):
+def update_trade(
+    id: int,
+    body: TradeUpdate,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
     t = db.query(Trade).filter(Trade.id == id).first()
     if not t:
         raise NotFoundError("Trade", id)
@@ -438,7 +524,14 @@ def update_trade(id: int, body: TradeUpdate, db: Session = Depends(get_db)):
         t.notes = body.notes.strip() if body.notes else None
         changes.append("notes")
     t.updated_at = datetime.utcnow()
-    audit(db, "TRADE_EDITED", "trade", t.id, f"Updated trade {t.id}: " + ", ".join(changes))
+    audit(
+        db,
+        "TRADE_EDITED",
+        "trade",
+        t.id,
+        f"Updated trade {t.id}: " + ", ".join(changes),
+        user=user,
+    )
     db.commit()
     db.refresh(t)
     return {
@@ -459,39 +552,73 @@ def update_trade(id: int, body: TradeUpdate, db: Session = Depends(get_db)):
 
 
 @app.delete("/api/trades/{id}")
-def delete_trade(id: int, db: Session = Depends(get_db)):
+def delete_trade(
+    id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
     t = db.query(Trade).filter(Trade.id == id).first()
     if not t:
         raise NotFoundError("Trade", id)
     db.delete(t)
-    audit(db, "TRADE_DELETED", "trade", id, f"Deleted trade {id}")
+    audit(
+        db,
+        "TRADE_DELETED",
+        "trade",
+        id,
+        f"Deleted trade {id}",
+        user=user,
+    )
     db.commit()
     return {"detail": "Trade deleted"}
 
 
 @app.post("/api/trades/{id}/reject")
-def reject_trade(id: int, body: RejectRequest, db: Session = Depends(get_db)):
+def reject_trade(
+    id: int,
+    body: RejectRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_admin),
+):
     t = db.query(Trade).filter(Trade.id == id).first()
     if not t:
         raise NotFoundError("Trade", id)
     t.status = "REJECTED"
     t.rejection_reason = body.rejection_reason.strip()
     t.rejected_at = datetime.utcnow()
-    audit(db, "TRADE_REJECTED", "trade", t.id, f"Rejected trade {t.id}: {t.rejection_reason}")
+    audit(
+        db,
+        "TRADE_REJECTED",
+        "trade",
+        t.id,
+        f"Rejected trade {t.id}: {t.rejection_reason}",
+        user=user,
+    )
     db.commit()
     db.refresh(t)
     return {"detail": "Trade rejected", "id": t.id, "status": t.status}
 
 
 @app.post("/api/trades/{id}/reinstate")
-def reinstate_trade(id: int, db: Session = Depends(get_db)):
+def reinstate_trade(
+    id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_admin),
+):
     t = db.query(Trade).filter(Trade.id == id).first()
     if not t:
         raise NotFoundError("Trade", id)
     t.status = "ACTIVE"
     t.rejection_reason = None
     t.rejected_at = None
-    audit(db, "TRADE_REINSTATED", "trade", t.id, f"Reinstated trade {t.id}")
+    audit(
+        db,
+        "TRADE_REINSTATED",
+        "trade",
+        t.id,
+        f"Reinstated trade {t.id}",
+        user=user,
+    )
     db.commit()
     db.refresh(t)
     return {"detail": "Trade reinstated", "id": t.id, "status": t.status}
@@ -532,7 +659,10 @@ def _compute_holdings(db: Session):
 
 
 @app.get("/api/holdings")
-def get_holdings(db: Session = Depends(get_db)):
+def get_holdings(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
     return _compute_holdings(db)
 
 
@@ -540,6 +670,7 @@ def get_holdings(db: Session = Depends(get_db)):
 def export_trades(
     status: str = Query("ALL", description="ACTIVE, REJECTED, or ALL"),
     db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
 ):
     q = db.query(Trade)
     if status.upper() == "ACTIVE":
@@ -586,7 +717,10 @@ def export_trades(
 
 
 @app.get("/api/export/holdings")
-def export_holdings(db: Session = Depends(get_db)):
+def export_holdings(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
     holdings = _compute_holdings(db)
     headers = [
         "ticker",
@@ -613,7 +747,10 @@ def export_holdings(db: Session = Depends(get_db)):
 
 # ============== Restricted list ==============
 @app.get("/api/restricted")
-def get_restricted(db: Session = Depends(get_db)):
+def get_restricted(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
     rows = db.query(RestrictedList).order_by(RestrictedList.created_at.desc()).all()
     return [
         {"id": r.id, "ticker": r.ticker, "reason": r.reason, "added_by": r.added_by, "created_at": _dt(r.created_at)}
@@ -622,27 +759,49 @@ def get_restricted(db: Session = Depends(get_db)):
 
 
 @app.post("/api/restricted")
-def create_restricted(body: RestrictedCreate, db: Session = Depends(get_db)):
+def create_restricted(
+    body: RestrictedCreate,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_admin),
+):
     r = RestrictedList(
         ticker=body.ticker,
         reason=body.reason.strip() if body.reason else None,
         added_by=body.added_by.strip() if body.added_by else None,
     )
     db.add(r)
-    audit(db, "RESTRICTED_ADDED", "restricted", r.id, f"Added {r.ticker} to restricted list")
+    audit(
+        db,
+        "RESTRICTED_ADDED",
+        "restricted",
+        r.id,
+        f"Added {r.ticker} to restricted list",
+        user=user,
+    )
     db.commit()
     db.refresh(r)
     return {"id": r.id, "ticker": r.ticker, "reason": r.reason, "added_by": r.added_by, "created_at": _dt(r.created_at)}
 
 
 @app.delete("/api/restricted/{id}")
-def delete_restricted(id: int, db: Session = Depends(get_db)):
+def delete_restricted(
+    id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_admin),
+):
     r = db.query(RestrictedList).filter(RestrictedList.id == id).first()
     if not r:
         raise NotFoundError("Restricted entry", id)
     ticker = r.ticker
     db.delete(r)
-    audit(db, "RESTRICTED_REMOVED", "restricted", id, f"Removed {ticker} from restricted list")
+    audit(
+        db,
+        "RESTRICTED_REMOVED",
+        "restricted",
+        id,
+        f"Removed {ticker} from restricted list",
+        user=user,
+    )
     db.commit()
     return {"detail": "Removed from restricted list"}
 
@@ -653,6 +812,7 @@ def get_audit(
     action: Optional[str] = Query(None, description="Filter by action code"),
     limit: int = Query(500, ge=1, le=2000),
     db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
 ):
     q = db.query(AuditLog)
     if action:
@@ -666,7 +826,10 @@ def get_audit(
 
 # ============== Metrics ==============
 @app.get("/api/metrics")
-def get_metrics(db: Session = Depends(get_db)):
+def get_metrics(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
     holdings_data = _compute_holdings(db)
     total_market_value = sum(h["market_value"] for h in holdings_data)
     total_unrealized_pnl = sum(h["unrealized_pnl"] for h in holdings_data)
@@ -698,7 +861,11 @@ def get_metrics(db: Session = Depends(get_db)):
 
 # ============== Prices & Portfolio Performance (Alpha Vantage) ==============
 @app.get("/api/prices/{ticker}")
-def get_price(ticker: str, db: Session = Depends(get_db)):
+def get_price(
+    ticker: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
     """
     Return a cached or fresh Alpha Vantage quote for a single ticker.
     Never raises; on error returns fields with None.
@@ -723,7 +890,7 @@ _refresh_status = {
 
 
 def _run_price_refresh_background():
-    from database import SessionLocal as _SessionLocal
+    from models import SessionLocal as _SessionLocal
 
     db = _SessionLocal()
     try:
@@ -852,7 +1019,10 @@ def _do_refresh_all_prices(db: Session):
 
 
 @app.post("/api/prices/refresh")
-def refresh_all_prices(background_tasks: BackgroundTasks):
+def refresh_all_prices(
+    background_tasks: BackgroundTasks,
+    user: User = Depends(require_admin),
+):
     if _refresh_status["running"]:
         raise HTTPException(status_code=409, detail="Price refresh already in progress")
     _refresh_status["running"] = True
@@ -861,7 +1031,7 @@ def refresh_all_prices(background_tasks: BackgroundTasks):
 
 
 @app.get("/api/prices/refresh/status")
-def get_refresh_status():
+def get_refresh_status(user: User = Depends(get_current_user)):
     return _refresh_status
 
 
@@ -911,7 +1081,10 @@ def _compute_portfolio_performance(db: Session):
 
 
 @app.get("/api/portfolio/performance")
-def get_portfolio_performance(db: Session = Depends(get_db)):
+def get_portfolio_performance(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
     """
     Calculate portfolio performance from all ACTIVE trades using current
     prices stored on the Security table.
@@ -940,7 +1113,10 @@ def get_portfolio_performance(db: Session = Depends(get_db)):
 
 
 @app.get("/api/analytics")
-def get_analytics(db: Session = Depends(get_db)):
+def get_analytics(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
     perf = _compute_portfolio_performance(db)
     total_market_value = perf["total_market_value"]
     breakdown = perf["breakdown"]
@@ -1076,7 +1252,10 @@ def get_analytics(db: Session = Depends(get_db)):
 
 
 @app.get("/api/export/analytics")
-def export_analytics(db: Session = Depends(get_db)):
+def export_analytics(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
     analytics = get_analytics(db)
     positions = analytics["positions"]
     headers = [
@@ -1114,7 +1293,10 @@ def export_analytics(db: Session = Depends(get_db)):
 
 
 @app.get("/api/trade-analytics")
-def get_trade_analytics(db: Session = Depends(get_db)):
+def get_trade_analytics(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
     trades = db.query(Trade).order_by(Trade.created_at.asc()).all()
     total_trades = len(trades)
     buy_trades = 0
@@ -1228,7 +1410,10 @@ def get_trade_analytics(db: Session = Depends(get_db)):
 
 
 @app.get("/api/snapshots")
-def get_snapshots(db: Session = Depends(get_db)):
+def get_snapshots(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
     rows = (
         db.query(PortfolioSnapshot)
         .order_by(PortfolioSnapshot.snapshot_date.asc())
@@ -1245,4 +1430,15 @@ def get_snapshots(db: Session = Depends(get_db)):
             for r in rows
         ]
     }
+
+
+# ============== SPA catch-all (must be last) ==============
+if FRONTEND_DIST.exists():
+
+    @app.get("/{full_path:path}", response_class=FileResponse)
+    def serve_spa(full_path: str):
+        file_path = FRONTEND_DIST / full_path
+        if file_path.is_file():
+            return FileResponse(str(file_path))
+        return FileResponse(str(FRONTEND_DIST / "index.html"))
 

@@ -1,9 +1,14 @@
 """
-Seed the QuantVault database with sample data. 
+Seed the QuantVault database with sample data.
 Run directly or import and call seed_data().
 Checks if already seeded to avoid duplicate data on repeated seeding.
+
+Note: This now seeds trader *accounts* (User rows) and uses
+their usernames as the `trader_name` on trades, so the blotter
+and login system stay in sync.
 """
-from models import init_db, SessionLocal, Security, Trader, Trade, RestrictedList
+from models import init_db, SessionLocal, Security, Trader, Trade, RestrictedList, User
+from services.auth import hash_password
 
 def seed_data():
     init_db()
@@ -27,40 +32,72 @@ def seed_data():
         for s in securities:
             db.add(Security(**s))
 
-        # Sample traders
-        traders = [
+        # Sample trader accounts (User rows)
+        # These are login accounts that will also be used in trades.
+        demo_traders = [
+            {
+                "username": "sarah",
+                "email": "sarah.chen@quantvault.com",
+                "password": "password123",
+            },
+            {
+                "username": "james",
+                "email": "james.mitchell@quantvault.com",
+                "password": "password123",
+            },
+            {
+                "username": "elena",
+                "email": "elena.rodriguez@quantvault.com",
+                "password": "password123",
+            },
+        ]
+        for u in demo_traders:
+            user = User(
+                username=u["username"],
+                email=u["email"],
+                hashed_password=hash_password(u["password"]),
+                role="trader",
+                is_active=True,
+            )
+            db.add(user)
+
+        # Optional: legacy Trader rows for reference (no longer used by UI)
+        legacy_traders = [
             {"name": "Sarah Chen", "desk": "Asia Equities", "email": "sarah.chen@quantvault.com"},
             {"name": "James Mitchell", "desk": "US Large Cap", "email": "james.mitchell@quantvault.com"},
             {"name": "Elena Rodriguez", "desk": "EMEA Equities", "email": "elena.rodriguez@quantvault.com"},
         ]
-        for t in traders:
+        for t in legacy_traders:
             db.add(Trader(**t))
 
-        db.commit()  # Commit so foreign keys, etc. are available
+        db.commit()
 
         # Sample trades (ACTIVE)
+        # IMPORTANT: trader_name now uses trader *usernames* ("sarah", "james", "elena")
         trades = [
-            {"ticker": "AAPL", "side": "BUY", "quantity": 1000, "price": 220.00, "trader_name": "Sarah Chen", "strategy": "Core", "notes": "Initial", "status": "ACTIVE"},
-            {"ticker": "MSFT", "side": "BUY", "quantity": 500, "price": 415.00, "trader_name": "James Mitchell", "strategy": "Growth", "notes": "", "status": "ACTIVE"},
-            {"ticker": "JPM", "side": "BUY", "quantity": 800, "price": 210.50, "trader_name": "Elena Rodriguez", "strategy": "Yield", "notes": "", "status": "ACTIVE"},
-            {"ticker": "CVX", "side": "BUY", "quantity": 300, "price": 152.20, "trader_name": "Sarah Chen", "strategy": "Energy Play", "notes": "", "status": "ACTIVE"},
-            {"ticker": "PFE", "side": "BUY", "quantity": 1200, "price": 30.20, "trader_name": "James Mitchell", "strategy": "Healthcare", "notes": "", "status": "ACTIVE"},
+            {"ticker": "AAPL", "side": "BUY", "quantity": 1000, "price": 220.00, "trader_name": "sarah", "strategy": "Core", "notes": "Initial", "status": "ACTIVE"},
+            {"ticker": "MSFT", "side": "BUY", "quantity": 500, "price": 415.00, "trader_name": "james", "strategy": "Growth", "notes": "", "status": "ACTIVE"},
+            {"ticker": "JPM", "side": "BUY", "quantity": 800, "price": 210.50, "trader_name": "elena", "strategy": "Yield", "notes": "", "status": "ACTIVE"},
+            {"ticker": "CVX", "side": "BUY", "quantity": 300, "price": 152.20, "trader_name": "sarah", "strategy": "Energy Play", "notes": "", "status": "ACTIVE"},
+            {"ticker": "PFE", "side": "BUY", "quantity": 1200, "price": 30.20, "trader_name": "james", "strategy": "Healthcare", "notes": "", "status": "ACTIVE"},
         ]
         for t in trades:
             db.add(Trade(**t))
 
         # One rejected trade for demo
-        db.add(Trade(
-            ticker="TSLA",
-            side="BUY",
-            quantity=500,
-            price=240.00,
-            trader_name="Elena Rodriguez",
-            strategy="Momentum",
-            notes="Sample rejected trade",
-            status="REJECTED",
-            rejection_reason="Exceeded risk limit",
-        ))
+        db.add(
+            Trade(
+                ticker="TSLA",
+                side="BUY",
+                quantity=500,
+                price=240.00,
+                trader_name="elena",
+                strategy="Momentum",
+                notes="Sample rejected trade",
+                status="REJECTED",
+                rejection_reason="Exceeded risk limit",
+            )
+        )
 
         # Restricted list (just one, as required)
         restricted = [
