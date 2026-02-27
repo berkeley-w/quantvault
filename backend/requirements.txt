@@ -10,3 +10,4 @@ passlib[bcrypt]
 pytest
 pytest-asyncio
 httpx
+email-validator==2.2.0
