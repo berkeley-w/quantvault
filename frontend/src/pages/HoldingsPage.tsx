@@ -1,10 +1,18 @@
 import { useHoldings } from "../hooks/useHoldings";
+import { useSecurities } from "../hooks/useSecurities";
 import { DataTable } from "../components/shared/DataTable";
 import { LoadingSpinner } from "../components/shared/LoadingSpinner";
-import { formatCurrency, pnlColor } from "../lib/formatters";
+import { formatCurrency, formatPercent, pnlColor } from "../lib/formatters";
 
 export function HoldingsPage() {
   const { data, isLoading } = useHoldings();
+  const { data: securities } = useSecurities();
+
+  const sharesByTicker =
+    securities?.reduce<Record<string, number | null>>((acc, sec) => {
+      acc[sec.ticker] = sec.shares_outstanding ?? null;
+      return acc;
+    }, {}) ?? {};
 
   return (
     <div className="space-y-4">
@@ -43,6 +51,17 @@ export function HoldingsPage() {
                   {formatCurrency(row.unrealized_pnl)}
                 </span>
               ),
+            },
+            {
+              key: "ownership_pct",
+              header: "Ownership %",
+              align: "right",
+              render: (row: any) => {
+                const shares = sharesByTicker[row.ticker];
+                if (!shares || shares <= 0) return "N/A";
+                const pct = (row.net_quantity / shares) * 100;
+                return formatPercent(pct);
+              },
             },
           ]}
           data={data}

@@ -1,5 +1,6 @@
 import { useMetrics } from "../hooks/useHoldings";
 import { useAnalytics, usePortfolioPerformance } from "../hooks/useAnalytics";
+import { useSecurities } from "../hooks/useSecurities";
 import { usePriceRefresh } from "../hooks/usePriceRefresh";
 import { MetricCard } from "../components/shared/MetricCard";
 import { DataTable } from "../components/shared/DataTable";
@@ -14,6 +15,13 @@ export function DashboardPage() {
   } = usePortfolioPerformance();
   const { data: analytics } = useAnalytics();
   const { startRefresh, isRefreshing } = usePriceRefresh();
+  const { data: securities } = useSecurities();
+
+  const sharesByTicker =
+    securities?.reduce<Record<string, number | null>>((acc, sec) => {
+      acc[sec.ticker] = sec.shares_outstanding ?? null;
+      return acc;
+    }, {}) ?? {};
 
   return (
     <div className="space-y-6">
@@ -118,6 +126,17 @@ export function DashboardPage() {
                       {formatCurrency(row.unrealized_pnl)}
                     </span>
                   ),
+                },
+                {
+                  key: "ownership_pct",
+                  header: "Ownership %",
+                  align: "right",
+                  render: (row: any) => {
+                    const shares = sharesByTicker[row.ticker];
+                    if (!shares || shares <= 0) return "N/A";
+                    const pct = (row.net_quantity / shares) * 100;
+                    return formatPercent(pct);
+                  },
                 },
               ]}
               data={metrics.top_holdings || []}

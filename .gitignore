@@ -1,0 +1,7 @@
+﻿frontend/node_modules/
+frontend/dist/
+backend/quantvault.db
+data/
+__pycache__/
+*.pyc
+.env

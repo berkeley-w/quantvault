@@ -13,20 +13,26 @@ export function MetricCard({ label, value, trend = "neutral", className }: Metri
   const trendColor =
     trend === "up" ? "text-green-400" : trend === "down" ? "text-red-400" : "text-slate-100";
 
-  const isNumericValue =
-    typeof value === "number" ||
-    (typeof value === "string" && /[0-9]/.test(value));
+  const asString =
+    typeof value === "string" || typeof value === "number"
+      ? String(value)
+      : undefined;
 
-  const valueAlignment = isNumericValue ? "text-right tabular-nums" : "text-left";
+  // Dynamically scale font size for very long values to keep them on one line
+  const length = asString ? asString.length : 0;
+  const sizeClass =
+    length > 18 ? "text-sm sm:text-base md:text-lg" : length > 12 ? "text-base sm:text-lg md:text-xl" : "text-lg sm:text-xl md:text-2xl";
 
   return (
     <div
-      className={`rounded-xl border border-slate-700 bg-slate-800 px-4 py-3 shadow-sm ${className || ""}`}
+      className={`flex h-full flex-col justify-between rounded-xl border border-slate-700 bg-slate-800 px-4 py-3 shadow-sm ${className || ""}`}
     >
       <div className="text-xs font-medium uppercase tracking-wide text-slate-400">
         {label}
       </div>
-      <div className={`mt-1 text-xl md:text-2xl font-semibold ${trendColor} ${valueAlignment} break-words`}>
+      <div
+        className={`mt-1 font-semibold ${trendColor} ${sizeClass} text-left leading-tight tabular-nums whitespace-nowrap overflow-hidden`}
+      >
         {value}
       </div>
     </div>
