@@ -214,7 +214,10 @@ export function AnalyticsPage() {
                       contentStyle={{
                         backgroundColor: "#1e293b",
                         border: "1px solid #334155",
+                        color: "#e5e7eb",
                       }}
+                      labelStyle={{ color: "#e5e7eb" }}
+                      itemStyle={{ color: "#e5e7eb" }}
                       formatter={(value: any) => formatPercent(value as number)}
                     />
                   </PieChart>
@@ -255,7 +258,10 @@ export function AnalyticsPage() {
                       contentStyle={{
                         backgroundColor: "#1e293b",
                         border: "1px solid #334155",
+                        color: "#e5e7eb",
                       }}
+                      labelStyle={{ color: "#e5e7eb" }}
+                      itemStyle={{ color: "#e5e7eb" }}
                       formatter={(value: any) => formatPercent(value as number)}
                     />
                   </PieChart>
