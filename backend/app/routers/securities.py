@@ -2,13 +2,14 @@ import logging
 from datetime import datetime
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.core.audit import audit
-from app.core.helpers import serialize_dt
+from app.core.auth import get_current_user, require_admin
+from app.core.helpers import apply_sorting, serialize_dt
 from app.database import get_db
-from app.models import Security
+from app.models import Security, User
 from app.schemas.security import SecurityCreate, SecurityResponse, SecurityUpdate
 
 
@@ -18,8 +19,25 @@ router = APIRouter(prefix="/api/securities", tags=["Securities"])
 
 
 @router.get("", response_model=List[SecurityResponse])
-def list_securities(db: Session = Depends(get_db)):
-    rows = db.query(Security).order_by(Security.ticker).all()
+def list_securities(
+    sort: str = Query("ticker", description="Sort field"),
+    order: str = Query("asc", description="Sort order: asc or desc"),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _ = user
+    sort = sort.lower()
+    order = order.lower()
+    sort_fields = {
+        "ticker": Security.ticker,
+        "name": Security.name,
+        "sector": Security.sector,
+        "price": Security.price,
+        "created_at": Security.created_at,
+    }
+    q = db.query(Security)
+    q = apply_sorting(q, Security, sort, order, sort_fields)
+    rows = q.all()
     return [
         {
             "id": s.id,
@@ -36,7 +54,11 @@ def list_securities(db: Session = Depends(get_db)):
 
 
 @router.post("", response_model=SecurityResponse)
-def create_security(body: SecurityCreate, db: Session = Depends(get_db)):
+def create_security(
+    body: SecurityCreate,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_admin),
+):
     existing = db.query(Security).filter(Security.ticker == body.ticker.upper()).first()
     if existing:
         raise HTTPException(
@@ -59,6 +81,7 @@ def create_security(body: SecurityCreate, db: Session = Depends(get_db)):
         "security",
         s.id,
         f"Added security {s.ticker} - {s.name}",
+        user=user,
     )
     return {
         "id": s.id,
@@ -73,7 +96,12 @@ def create_security(body: SecurityCreate, db: Session = Depends(get_db)):
 
 
 @router.put("/{id}", response_model=SecurityResponse)
-def update_security(id: int, body: SecurityUpdate, db: Session = Depends(get_db)):
+def update_security(
+    id: int,
+    body: SecurityUpdate,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_admin),
+):
     s = db.query(Security).filter(Security.id == id).first()
     if not s:
         raise HTTPException(status_code=404, detail="Security not found")
@@ -102,6 +130,7 @@ def update_security(id: int, body: SecurityUpdate, db: Session = Depends(get_db)
         "security",
         s.id,
         f"Updated {s.ticker}: " + ", ".join(changes),
+        user=user,
     )
     return {
         "id": s.id,
@@ -116,7 +145,11 @@ def update_security(id: int, body: SecurityUpdate, db: Session = Depends(get_db)
 
 
 @router.delete("/{id}")
-def delete_security(id: int, db: Session = Depends(get_db)):
+def delete_security(
+    id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_admin),
+):
     s = db.query(Security).filter(Security.id == id).first()
     if not s:
         raise HTTPException(status_code=404, detail="Security not found")
@@ -129,6 +162,7 @@ def delete_security(id: int, db: Session = Depends(get_db)):
         "security",
         id,
         f"Deleted security {ticker}",
+        user=user,
     )
     return {"detail": "Security deleted"}
 

@@ -5,7 +5,8 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import Security, Trade
+from app.core.auth import get_current_user
+from app.models import Security, Trade, User
 from app.schemas.holdings import HoldingResponse, MetricsResponse
 from app.services.holdings import _compute_holdings
 
@@ -16,12 +17,20 @@ router = APIRouter(prefix="/api", tags=["Holdings"])
 
 
 @router.get("/holdings", response_model=List[HoldingResponse])
-def get_holdings(db: Session = Depends(get_db)):
+def get_holdings(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _ = user
     return _compute_holdings(db)
 
 
 @router.get("/metrics", response_model=MetricsResponse)
-def get_metrics(db: Session = Depends(get_db)):
+def get_metrics(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _ = user
     holdings_data = _compute_holdings(db)
     total_market_value = sum(h["market_value"] for h in holdings_data)
     total_unrealized_pnl = sum(h["unrealized_pnl"] for h in holdings_data)

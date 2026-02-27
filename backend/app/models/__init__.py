@@ -5,6 +5,7 @@ from app.models.restricted import RestrictedList
 from app.models.audit import AuditLog
 from app.models.company_overview import CompanyOverview
 from app.models.portfolio_snapshot import PortfolioSnapshot
+from app.models.user import User
 
 __all__ = [
     "Security",
@@ -14,5 +15,6 @@ __all__ = [
     "AuditLog",
     "CompanyOverview",
     "PortfolioSnapshot",
+    "User",
 ]
 

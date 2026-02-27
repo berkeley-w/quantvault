@@ -3,8 +3,9 @@ import logging
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
+from app.core.auth import get_current_user
 from app.database import get_db
-from app.models import PortfolioSnapshot
+from app.models import PortfolioSnapshot, User
 from app.schemas.portfolio import PortfolioPerformanceResponse, SnapshotResponse
 from app.services.portfolio import _compute_portfolio_performance
 
@@ -18,11 +19,15 @@ router = APIRouter(prefix="/api", tags=["Portfolio"])
     "/portfolio/performance",
     response_model=PortfolioPerformanceResponse,
 )
-def get_performance(db: Session = Depends(get_db)):
+def get_performance(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
     """
     Calculate portfolio performance from all ACTIVE trades using current
     prices stored on the Security table.
     """
+    _ = user
     perf = _compute_portfolio_performance(db)
     return {
         "total_market_value": perf["total_market_value"],
@@ -45,7 +50,11 @@ def get_performance(db: Session = Depends(get_db)):
 
 
 @router.get("/snapshots", response_model=SnapshotResponse)
-def get_snapshots(db: Session = Depends(get_db)):
+def get_snapshots(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _ = user
     rows = (
         db.query(PortfolioSnapshot)
         .order_by(PortfolioSnapshot.snapshot_date.asc())

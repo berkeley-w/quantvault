@@ -4,8 +4,9 @@ from typing import Dict
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
+from app.core.auth import get_current_user
 from app.database import get_db
-from app.models import CompanyOverview, Security, Trade
+from app.models import CompanyOverview, Security, Trade, User
 from app.schemas.analytics import AnalyticsResponse, TradeAnalyticsResponse
 from app.services.portfolio import _compute_portfolio_performance
 
@@ -16,7 +17,11 @@ router = APIRouter(prefix="/api", tags=["Analytics"])
 
 
 @router.get("/analytics", response_model=AnalyticsResponse)
-def get_analytics(db: Session = Depends(get_db)):
+def get_analytics(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _ = user
     perf = _compute_portfolio_performance(db)
     total_market_value = perf["total_market_value"]
     breakdown = perf["breakdown"]
@@ -154,7 +159,11 @@ def get_analytics(db: Session = Depends(get_db)):
 
 
 @router.get("/trade-analytics", response_model=TradeAnalyticsResponse)
-def get_trade_analytics(db: Session = Depends(get_db)):
+def get_trade_analytics(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _ = user
     trades = db.query(Trade).order_by(Trade.created_at.asc()).all()
     total_trades = len(trades)
     buy_trades = 0
