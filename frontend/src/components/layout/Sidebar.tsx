@@ -64,14 +64,14 @@ export function Sidebar({ user, onLogout }: SidebarProps) {
       )}
 
       <aside
-        className={`fixed left-0 top-0 z-40 flex h-screen w-64 flex-col border-r border-slate-800 bg-slate-900 transition-transform lg:relative lg:translate-x-0 ${
+        className={`fixed left-0 top-0 z-40 flex h-screen w-64 flex-col overflow-y-auto border-r border-slate-800 bg-slate-900 transition-transform lg:relative lg:translate-x-0 ${
           mobileMenuOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
         <div className="px-4 py-4 text-lg font-semibold text-green-400">
           QuantVault
         </div>
-        <nav className="flex-1 space-y-1 overflow-y-auto px-2">
+        <nav className="space-y-1 px-2">
         {navItems.map((item) => {
           const Icon = item.icon;
           return (
