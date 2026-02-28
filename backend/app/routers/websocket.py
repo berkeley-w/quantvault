@@ -35,7 +35,8 @@ async def websocket_endpoint(
             return
 
         # Verify user exists and is active
-        db = next(get_db())
+        from app.database import SessionLocal
+        db = SessionLocal()
         try:
             user = db.query(User).filter(User.id == int(user_id)).first()
             if not user or not user.is_active:
