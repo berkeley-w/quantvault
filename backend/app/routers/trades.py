@@ -11,7 +11,14 @@ from app.core.helpers import apply_sorting, serialize_dt
 from app.core.pagination import PaginatedResponse, PaginationParams
 from app.database import get_db
 from app.models import RestrictedList, Trade, User
-from app.schemas.trade import RejectRequest, TradeCreate, TradeResponse, TradeResponseWithWarnings, TradeUpdate
+from app.schemas.trade import (
+    RejectRequest,
+    RiskWarningMessage,
+    TradeCreate,
+    TradeResponse,
+    TradeResponseWithWarnings,
+    TradeUpdate,
+)
 from app.services.holdings import recompute_holdings
 from app.services.risk import check_trade_risk
 from app.services.websocket_manager import manager
@@ -112,16 +119,21 @@ async def create_trade(
     db.add(t)
     db.commit()
     db.refresh(t)
-    audit(
-        db,
-        "TRADE_ADDED",
-        "trade",
-        t.id,
-        f"{t.side} {t.quantity} {t.ticker} @ {t.price} by {t.trader_name}",
-        user=user,
-    )
-    recompute_holdings(db)
-    # Broadcast WebSocket event (fire and forget)
+
+    # Post-commit: audit, holdings, websocket. Do not fail the request if these fail.
+    try:
+        audit(
+            db,
+            "TRADE_ADDED",
+            "trade",
+            t.id,
+            f"{t.side} {t.quantity} {t.ticker} @ {t.price} by {t.trader_name}",
+            user=user,
+        )
+        recompute_holdings(db)
+    except Exception as e:
+        logger.warning("Post-trade audit/holdings failed (trade already saved): %s", e)
+
     try:
         import asyncio
         loop = asyncio.get_event_loop()
@@ -149,25 +161,24 @@ async def create_trade(
             ))
     except Exception:
         pass
-    
-    response = {
-        "id": t.id,
-        "ticker": t.ticker,
-        "side": t.side,
-        "quantity": t.quantity,
-        "price": t.price,
-        "trader_name": t.trader_name,
-        "strategy": t.strategy,
-        "notes": t.notes,
-        "status": t.status,
-        "rejection_reason": t.rejection_reason,
-        "rejected_at": serialize_dt(t.rejected_at),
-        "created_at": serialize_dt(t.created_at),
-        "updated_at": serialize_dt(t.updated_at),
-    }
-    if risk_warnings:
-        response["risk_warnings"] = [{"message": w.get("message", "")} for w in risk_warnings]
-    return response
+
+    # Return a Pydantic model so response serialization cannot fail
+    return TradeResponseWithWarnings(
+        id=t.id,
+        ticker=t.ticker,
+        side=t.side,
+        quantity=t.quantity,
+        price=t.price,
+        trader_name=t.trader_name,
+        strategy=t.strategy,
+        notes=t.notes,
+        status=t.status,
+        rejection_reason=t.rejection_reason,
+        rejected_at=t.rejected_at,
+        created_at=t.created_at,
+        updated_at=t.updated_at,
+        risk_warnings=[RiskWarningMessage(message=w.get("message", "")) for w in risk_warnings] if risk_warnings else None,
+    )
 
 
 @router.put("/{id}", response_model=TradeResponse)
