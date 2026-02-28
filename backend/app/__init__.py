@@ -104,6 +104,9 @@ def create_app() -> FastAPI:
 
         @app.get("/{full_path:path}", response_class=FileResponse)
         def serve_spa(full_path: str):
+            # Never serve SPA for API paths; let API routes or 404 JSON handle them
+            if full_path.startswith("api/"):
+                raise HTTPException(status_code=404, detail="Not Found")
             file_path = frontend_dist / full_path
             if file_path.is_file():
                 return FileResponse(str(file_path))

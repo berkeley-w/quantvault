@@ -27,13 +27,34 @@ export async function apiClient<T>(url: string, options?: RequestInit): Promise<
     ...options,
   });
 
+  const text = await response.text();
+
   if (!response.ok) {
-    const body = await response
-      .json()
-      .catch(() => ({ detail: response.statusText }));
-    throw new ApiError(response.status, body.detail || response.statusText);
+    let detail = response.statusText;
+    if (text.startsWith("<")) {
+      detail = "Server returned HTML instead of JSON. Check that the API is reachable.";
+    } else {
+      try {
+        const body = JSON.parse(text);
+        if (body?.detail) detail = body.detail;
+      } catch {
+        if (text) detail = text.slice(0, 200);
+      }
+    }
+    throw new ApiError(response.status, detail);
   }
 
-  return response.json() as Promise<T>;
+  if (text.startsWith("<")) {
+    throw new ApiError(
+      response.status,
+      "Server returned HTML instead of JSON. Check that the API is reachable."
+    );
+  }
+
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    throw new ApiError(502, "Invalid JSON response from server.");
+  }
 }
 
