@@ -121,17 +121,34 @@ async def create_trade(
         user=user,
     )
     recompute_holdings(db)
-    # Broadcast WebSocket event
-    await manager.broadcast_event(
-        "trade_created",
-        {
-            "id": t.id,
-            "ticker": t.ticker,
-            "side": t.side,
-            "quantity": t.quantity,
-            "price": t.price,
-        },
-    )
+    # Broadcast WebSocket event (fire and forget)
+    try:
+        import asyncio
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            asyncio.create_task(manager.broadcast_event(
+                "trade_created",
+                {
+                    "id": t.id,
+                    "ticker": t.ticker,
+                    "side": t.side,
+                    "quantity": t.quantity,
+                    "price": t.price,
+                },
+            ))
+        else:
+            loop.run_until_complete(manager.broadcast_event(
+                "trade_created",
+                {
+                    "id": t.id,
+                    "ticker": t.ticker,
+                    "side": t.side,
+                    "quantity": t.quantity,
+                    "price": t.price,
+                },
+            ))
+    except Exception:
+        pass
     
     response = {
         "id": t.id,
@@ -202,16 +219,33 @@ async def update_trade(
         user=user,
     )
     recompute_holdings(db)
-    await manager.broadcast_event(
-        "trade_updated",
-        {
-            "id": t.id,
-            "ticker": t.ticker,
-            "side": t.side,
-            "quantity": t.quantity,
-            "price": t.price,
-        },
-    )
+    try:
+        import asyncio
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            asyncio.create_task(manager.broadcast_event(
+                "trade_updated",
+                {
+                    "id": t.id,
+                    "ticker": t.ticker,
+                    "side": t.side,
+                    "quantity": t.quantity,
+                    "price": t.price,
+                },
+            ))
+        else:
+            loop.run_until_complete(manager.broadcast_event(
+                "trade_updated",
+                {
+                    "id": t.id,
+                    "ticker": t.ticker,
+                    "side": t.side,
+                    "quantity": t.quantity,
+                    "price": t.price,
+                },
+            ))
+    except Exception:
+        pass
     return {
         "id": t.id,
         "ticker": t.ticker,
@@ -242,7 +276,15 @@ async def delete_trade(
     db.commit()
     audit(db, "TRADE_DELETED", "trade", id, f"Deleted trade {id}", user=user)
     recompute_holdings(db)
-    await manager.broadcast_event("trade_deleted", {"id": id})
+    try:
+        import asyncio
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            asyncio.create_task(manager.broadcast_event("trade_deleted", {"id": id}))
+        else:
+            loop.run_until_complete(manager.broadcast_event("trade_deleted", {"id": id}))
+    except Exception:
+        pass
     return {"detail": "Trade deleted"}
 
 
@@ -270,7 +312,15 @@ async def reject_trade(
         user=user,
     )
     recompute_holdings(db)
-    await manager.broadcast_event("trade_rejected", {"id": t.id})
+    try:
+        import asyncio
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            asyncio.create_task(manager.broadcast_event("trade_rejected", {"id": t.id}))
+        else:
+            loop.run_until_complete(manager.broadcast_event("trade_rejected", {"id": t.id}))
+    except Exception:
+        pass
     return {"detail": "Trade rejected", "id": t.id, "status": t.status}
 
 
@@ -297,7 +347,15 @@ async def reinstate_trade(
         user=user,
     )
     recompute_holdings(db)
-    await manager.broadcast_event("trade_reinstated", {"id": t.id})
+    try:
+        import asyncio
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            asyncio.create_task(manager.broadcast_event("trade_reinstated", {"id": t.id}))
+        else:
+            loop.run_until_complete(manager.broadcast_event("trade_reinstated", {"id": t.id}))
+    except Exception:
+        pass
     recompute_holdings(db)
     return {"detail": "Trade reinstated", "id": t.id, "status": t.status}
 

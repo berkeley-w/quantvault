@@ -28,7 +28,8 @@ export function DashboardPage() {
   } = usePortfolioPerformance();
   const { data: analytics } = useAnalytics();
   const { startRefresh, isRefreshing } = usePriceRefresh();
-  const { data: securities } = useSecurities();
+  const { data: securitiesData } = useSecurities();
+  const securities = securitiesData?.items || [];
   const { data: riskMetrics } = useRiskMetrics();
   const { data: recentSignals } = useSignals(undefined, undefined, undefined, undefined, 1, 10);
   const { data: snapshots } = useSnapshots();

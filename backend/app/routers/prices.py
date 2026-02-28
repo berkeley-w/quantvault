@@ -9,7 +9,6 @@ from app.models import User
 from app.schemas.portfolio import PriceResponse
 from app.services.alpha_vantage import get_quote
 from app.services.price_refresh import refresh_all_prices
-import asyncio
 
 
 logger = logging.getLogger(__name__)
@@ -23,10 +22,11 @@ _refresh_status = {
 }
 
 
-async def _run_price_refresh_background() -> None:
+def _run_price_refresh_background() -> None:
+    """Run price refresh in background thread."""
     db = SessionLocal()
     try:
-        result = await refresh_all_prices(db)
+        result = refresh_all_prices(db)
         _refresh_status["last_result"] = result
         from datetime import datetime
 
@@ -62,7 +62,7 @@ def get_price(
 
 
 @router.post("/refresh")
-async def refresh_prices(
+def refresh_prices(
     background_tasks: BackgroundTasks,
     admin: User = Depends(require_admin),
 ):
@@ -70,8 +70,8 @@ async def refresh_prices(
     if _refresh_status["running"]:
         raise HTTPException(status_code=409, detail="Price refresh already in progress")
     _refresh_status["running"] = True
-    # Run async function in background
-    asyncio.create_task(_run_price_refresh_background())
+    # Run in background thread
+    background_tasks.add_task(_run_price_refresh_background)
     return {"status": "started", "message": "Price refresh started in background"}
 
 

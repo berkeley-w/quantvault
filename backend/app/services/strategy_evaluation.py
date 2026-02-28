@@ -77,7 +77,7 @@ def evaluate_active_strategies(db: Session, ticker: str) -> List[Dict[str, Any]]
     return signals
 
 
-async def generate_and_store_signals(db: Session, ticker: str) -> int:
+def generate_and_store_signals(db: Session, ticker: str) -> int:
     """
     Evaluate strategies for a ticker and store any generated signals.
     Returns count of signals generated.
@@ -122,16 +122,32 @@ async def generate_and_store_signals(db: Session, ticker: str) -> int:
             f"Generated {signal_data['signal_type']} signal for {ticker} from strategy {signal_data['strategy_id']}",
         )
 
-        # Broadcast signal event
-        await manager.broadcast_event(
-            "signal_generated",
-            {
-                "ticker": ticker,
-                "signal_type": signal_data["signal_type"],
-                "strategy_id": signal_data["strategy_id"],
-                "signal_strength": signal_data["signal_strength"],
-            },
-        )
+        # Broadcast signal event (fire and forget)
+        try:
+            import asyncio
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                asyncio.create_task(manager.broadcast_event(
+                    "signal_generated",
+                    {
+                        "ticker": ticker,
+                        "signal_type": signal_data["signal_type"],
+                        "strategy_id": signal_data["strategy_id"],
+                        "signal_strength": signal_data["signal_strength"],
+                    },
+                ))
+            else:
+                loop.run_until_complete(manager.broadcast_event(
+                    "signal_generated",
+                    {
+                        "ticker": ticker,
+                        "signal_type": signal_data["signal_type"],
+                        "strategy_id": signal_data["strategy_id"],
+                        "signal_strength": signal_data["signal_strength"],
+                    },
+                ))
+        except Exception:
+            pass  # Don't fail signal generation if WebSocket broadcast fails
 
     db.commit()
     return count

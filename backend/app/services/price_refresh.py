@@ -19,7 +19,7 @@ from app.services.websocket_manager import manager
 logger = logging.getLogger(__name__)
 
 
-async def refresh_all_prices(db: Session) -> Dict[str, Any]:
+def refresh_all_prices(db: Session) -> Dict[str, Any]:
     """
     Fetch quotes for all securities and update their stored price.
     Also refreshes cached company overview data when older than 24 hours
@@ -137,15 +137,30 @@ async def refresh_all_prices(db: Session) -> Dict[str, Any]:
         f"Refreshed prices for {len(updated)} securities; {len(failed)} failed",
     )
 
-    # Broadcast price refresh event
-    await manager.broadcast_event(
-        "prices_refreshed",
-        {
-            "updated_count": len(updated),
-            "failed_count": len(failed),
-            "updated_tickers": updated,
-        },
-    )
+    # Broadcast price refresh event (fire and forget)
+    try:
+        import asyncio
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            asyncio.create_task(manager.broadcast_event(
+                "prices_refreshed",
+                {
+                    "updated_count": len(updated),
+                    "failed_count": len(failed),
+                    "updated_tickers": updated,
+                },
+            ))
+        else:
+            loop.run_until_complete(manager.broadcast_event(
+                "prices_refreshed",
+                {
+                    "updated_count": len(updated),
+                    "failed_count": len(failed),
+                    "updated_tickers": updated,
+                },
+            ))
+    except Exception:
+        pass  # Don't fail price refresh if WebSocket broadcast fails
 
     return {
         "updated_count": len(updated),
