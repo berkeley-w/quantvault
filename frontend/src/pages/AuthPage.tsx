@@ -20,11 +20,11 @@ export function AuthPage({ onAuthenticated }: AuthPageProps) {
     try {
       const payload: TokenResponse =
         mode === "setup"
-          ? await apiClient("/api/auth/setup", {
+          ? await apiClient("/api/v1/auth/setup", {
               method: "POST",
               body: JSON.stringify({ username, email, password }),
             })
-          : await apiClient("/api/auth/login", {
+          : await apiClient("/api/v1/auth/login", {
               method: "POST",
               body: JSON.stringify({ username, password }),
             });

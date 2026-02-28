@@ -6,19 +6,24 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.core.audit import audit
+from app.core.auth import get_current_user, require_admin
 from app.core.helpers import serialize_dt
 from app.database import get_db
-from app.models import Trader
+from app.models import Trader, User
 from app.schemas.trader import TraderCreate, TraderResponse, TraderUpdate
 
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/traders", tags=["Traders"])
+router = APIRouter(prefix="/traders", tags=["Traders"])
 
 
 @router.get("", response_model=List[TraderResponse])
-def list_traders(db: Session = Depends(get_db)):
+def list_traders(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _ = user
     rows = db.query(Trader).order_by(Trader.name).all()
     return [
         {
@@ -34,7 +39,11 @@ def list_traders(db: Session = Depends(get_db)):
 
 
 @router.post("", response_model=TraderResponse)
-def create_trader(body: TraderCreate, db: Session = Depends(get_db)):
+def create_trader(
+    body: TraderCreate,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_admin),
+):
     t = Trader(
         name=body.name.strip(),
         desk=body.desk.strip() if body.desk else None,
@@ -43,7 +52,7 @@ def create_trader(body: TraderCreate, db: Session = Depends(get_db)):
     db.add(t)
     db.commit()
     db.refresh(t)
-    audit(db, "TRADER_ADDED", "trader", t.id, f"Added trader {t.name}")
+    audit(db, "TRADER_ADDED", "trader", t.id, f"Added trader {t.name}", user=user)
     return {
         "id": t.id,
         "name": t.name,
@@ -55,7 +64,12 @@ def create_trader(body: TraderCreate, db: Session = Depends(get_db)):
 
 
 @router.put("/{id}", response_model=TraderResponse)
-def update_trader(id: int, body: TraderUpdate, db: Session = Depends(get_db)):
+def update_trader(
+    id: int,
+    body: TraderUpdate,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_admin),
+):
     t = db.query(Trader).filter(Trader.id == id).first()
     if not t:
         raise HTTPException(status_code=404, detail="Trader not found")
@@ -68,7 +82,7 @@ def update_trader(id: int, body: TraderUpdate, db: Session = Depends(get_db)):
     t.updated_at = datetime.utcnow()
     db.commit()
     db.refresh(t)
-    audit(db, "TRADER_EDITED", "trader", t.id, f"Updated trader {t.name}")
+    audit(db, "TRADER_EDITED", "trader", t.id, f"Updated trader {t.name}", user=user)
     return {
         "id": t.id,
         "name": t.name,
@@ -80,13 +94,17 @@ def update_trader(id: int, body: TraderUpdate, db: Session = Depends(get_db)):
 
 
 @router.delete("/{id}")
-def delete_trader(id: int, db: Session = Depends(get_db)):
+def delete_trader(
+    id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_admin),
+):
     t = db.query(Trader).filter(Trader.id == id).first()
     if not t:
         raise HTTPException(status_code=404, detail="Trader not found")
     name = t.name
     db.delete(t)
     db.commit()
-    audit(db, "TRADER_DELETED", "trader", id, f"Deleted trader {name}")
+    audit(db, "TRADER_DELETED", "trader", id, f"Deleted trader {name}", user=user)
     return {"detail": "Trader deleted"}
 

@@ -7,7 +7,10 @@ import { apiClient } from "../api/client";
 import { PriceQuote } from "../types";
 
 export function SecuritiesPage() {
-  const { data, isLoading } = useSecurities();
+  const [page, setPage] = useState(1);
+  const pageSize = 50;
+  const { data: securitiesData, isLoading } = useSecurities(page, pageSize);
+  const data = securitiesData?.items || [];
   const createSecurity = useCreateSecurity();
   const updateSecurity = useUpdateSecurity();
   const deleteSecurity = useDeleteSecurity();
@@ -72,7 +75,7 @@ export function SecuritiesPage() {
   };
 
   const fetchLivePrice = async (ticker: string, id: number) => {
-    const quote = await apiClient<PriceQuote>(`/api/prices/${ticker}`);
+      const quote = await apiClient<PriceQuote>(`/api/v1/prices/${ticker}`);
     if (quote.current_price != null) {
       updateSecurity.mutate({
         id,
@@ -179,6 +182,7 @@ export function SecuritiesPage() {
         {isLoading || !data ? (
           <LoadingSpinner />
         ) : (
+          <>
           <DataTable
             columns={[
               {
@@ -325,6 +329,31 @@ export function SecuritiesPage() {
             ]}
             data={data}
           />
+          {/* Pagination */}
+          {securitiesData && securitiesData.total_pages > 1 && (
+            <div className="mt-4 flex items-center justify-between">
+              <div className="text-sm text-slate-400">
+                Showing {((page - 1) * pageSize) + 1} to {Math.min(page * pageSize, securitiesData.total)} of {securitiesData.total}
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={page === 1}
+                  className="rounded bg-slate-800 px-3 py-1 text-sm text-slate-100 hover:bg-slate-700 disabled:opacity-50"
+                >
+                  Previous
+                </button>
+                <button
+                  onClick={() => setPage((p) => Math.min(securitiesData.total_pages, p + 1))}
+                  disabled={page >= securitiesData.total_pages}
+                  className="rounded bg-slate-800 px-3 py-1 text-sm text-slate-100 hover:bg-slate-700 disabled:opacity-50"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          )}
+          </>
         )}
       </div>
     </div>

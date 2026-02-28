@@ -1,18 +1,24 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 import { apiClient } from "../api/client";
-import { Trade, TradeSide } from "../types";
+import { Trade, TradeSide, PaginatedResponse, TradeResponseWithWarnings } from "../types";
 
 interface UseTradesOptions {
   status?: "ACTIVE" | "REJECTED" | "ALL";
 }
 
-export function useTrades(options: UseTradesOptions = {}) {
+export function useTrades(options: UseTradesOptions = {}, page: number = 1, pageSize: number = 50) {
   const status = options.status ?? "ALL";
   return useQuery({
-    queryKey: ["trades", { status }],
-    queryFn: () =>
-      apiClient<Trade[]>(`/api/trades?status=${encodeURIComponent(status)}`),
+    queryKey: ["trades", { status }, page, pageSize],
+    queryFn: () => {
+      const params = new URLSearchParams({
+        status,
+        page: String(page),
+        page_size: String(pageSize),
+      });
+      return apiClient<PaginatedResponse<Trade>>(`/api/v1/trades?${params.toString()}`);
+    },
   });
 }
 
@@ -48,13 +54,19 @@ export function useCreateTrade() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (data: TradeCreate) =>
-      apiClient<Trade>("/api/trades", {
+      apiClient<TradeResponseWithWarnings>("/api/v1/trades", {
         method: "POST",
         body: JSON.stringify(data),
       }),
-    onSuccess: () => {
+    onSuccess: (response) => {
       invalidateAfterTradeChange(qc);
-      toast.success("Trade created");
+      if (response.risk_warnings && response.risk_warnings.length > 0) {
+        const warnings = response.risk_warnings.map((w) => w.message).join("; ");
+        toast.success("Trade created", { duration: 4000 });
+        toast.warning(`Risk warnings: ${warnings}`, { duration: 6000 });
+      } else {
+        toast.success("Trade created");
+      }
     },
     onError: (err: any) => toast.error(err?.message || "Failed to create trade"),
   });
@@ -64,7 +76,7 @@ export function useUpdateTrade() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (params: { id: number; data: TradeUpdate }) =>
-      apiClient<Trade>(`/api/trades/${params.id}`, {
+      apiClient<Trade>(`/api/v1/trades/${params.id}`, {
         method: "PUT",
         body: JSON.stringify(params.data),
       }),
@@ -80,7 +92,7 @@ export function useDeleteTrade() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: number) =>
-      apiClient(`/api/trades/${id}`, { method: "DELETE" }),
+      apiClient(`/api/v1/trades/${id}`, { method: "DELETE" }),
     onSuccess: () => {
       invalidateAfterTradeChange(qc);
       toast.success("Trade deleted");
@@ -93,7 +105,7 @@ export function useRejectTrade() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (params: { id: number; rejection_reason: string }) =>
-      apiClient(`/api/trades/${params.id}/reject`, {
+      apiClient(`/api/v1/trades/${params.id}/reject`, {
         method: "POST",
         body: JSON.stringify({ rejection_reason: params.rejection_reason }),
       }),
@@ -109,7 +121,7 @@ export function useReinstateTrade() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: number) =>
-      apiClient(`/api/trades/${id}/reinstate`, { method: "POST" }),
+      apiClient(`/api/v1/trades/${id}/reinstate`, { method: "POST" }),
     onSuccess: () => {
       invalidateAfterTradeChange(qc);
       toast.success("Trade reinstated");

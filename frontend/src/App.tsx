@@ -9,6 +9,10 @@ import { SecuritiesPage } from "./pages/SecuritiesPage";
 import { RestrictedPage } from "./pages/RestrictedPage";
 import { AuditPage } from "./pages/AuditPage";
 import { AnalyticsPage } from "./pages/AnalyticsPage";
+import { TechnicalAnalysisPage } from "./pages/TechnicalAnalysisPage";
+import { SignalsPage } from "./pages/SignalsPage";
+import { StrategiesPage } from "./pages/StrategiesPage";
+import { RiskPage } from "./pages/RiskPage";
 import { AuthPage } from "./pages/AuthPage";
 import { UsersAdminPage } from "./pages/UsersAdminPage";
 import type { TokenResponse } from "./types";
@@ -58,12 +62,20 @@ function App() {
     );
   }
 
+  // Normalize invalid path (e.g. "//") so assets and routing work
+  if (typeof window !== "undefined" && (window.location.pathname === "//" || window.location.pathname === "")) {
+    return <Navigate to="/" replace />;
+  }
   return (
     <Routes>
       <Route element={<Layout auth={auth} onLogout={handleLogout} />}>
         <Route path="/" element={<DashboardPage />} />
         <Route path="/blotter" element={<BlotterPage />} />
         <Route path="/holdings" element={<HoldingsPage />} />
+        <Route path="/technical" element={<TechnicalAnalysisPage />} />
+        <Route path="/signals" element={<SignalsPage />} />
+        <Route path="/strategies" element={<StrategiesPage />} />
+        <Route path="/risk" element={<RiskPage />} />
         <Route path="/compliance" element={<CompliancePage />} />
         <Route path="/securities" element={<SecuritiesPage />} />
         <Route path="/traders" element={<UsersAdminPage />} />

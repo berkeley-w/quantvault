@@ -19,7 +19,7 @@ export function UsersAdminPage() {
     const load = async () => {
       setLoading(true);
       try {
-        const data = await apiClient<AuthUser[]>("/api/auth/users");
+        const data = await apiClient<AuthUser[]>("/api/v1/auth/users");
         if (!cancelled) {
           setUsers(data);
         }
@@ -56,7 +56,7 @@ export function UsersAdminPage() {
   const handleSave = async (user: AuthUser) => {
     setSavingId(user.id);
     try {
-      const updated = await apiClient<AuthUser>(`/api/auth/users/${user.id}`, {
+      const updated = await apiClient<AuthUser>(`/api/v1/auth/users/${user.id}`, {
         method: "PUT",
         body: JSON.stringify({
           username: user.username,
@@ -79,7 +79,7 @@ export function UsersAdminPage() {
     if (!pwd) return;
     setSavingId(user.id);
     try {
-      await apiClient<AuthUser>(`/api/auth/users/${user.id}`, {
+      await apiClient<AuthUser>(`/api/v1/auth/users/${user.id}`, {
         method: "PUT",
         body: JSON.stringify({ password: pwd }),
       });
@@ -98,7 +98,7 @@ export function UsersAdminPage() {
       return;
     }
     try {
-      const newUser = await apiClient<AuthUser>("/api/auth/users", {
+      const newUser = await apiClient<AuthUser>("/api/v1/auth/users", {
         method: "POST",
         body: JSON.stringify({
           username: createForm.username,

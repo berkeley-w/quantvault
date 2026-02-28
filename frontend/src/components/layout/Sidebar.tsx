@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { NavLink } from "react-router-dom";
 import {
   LayoutDashboard,
@@ -11,6 +12,12 @@ import {
   BarChart3,
   LogOut,
   User as UserIcon,
+  TrendingUp,
+  Bell,
+  Settings,
+  AlertTriangle,
+  Menu,
+  X,
 } from "lucide-react";
 import type { AuthUser } from "../../types";
 
@@ -18,6 +25,10 @@ const navItems = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard },
   { to: "/blotter", label: "Blotter", icon: FileText },
   { to: "/holdings", label: "Holdings", icon: Briefcase },
+  { to: "/technical", label: "Technical Analysis", icon: TrendingUp },
+  { to: "/signals", label: "Signals", icon: Bell },
+  { to: "/strategies", label: "Strategies", icon: Settings },
+  { to: "/risk", label: "Risk", icon: AlertTriangle },
   { to: "/compliance", label: "Compliance", icon: Shield },
   { to: "/securities", label: "Securities", icon: Building2 },
   { to: "/restricted", label: "Restricted", icon: Ban },
@@ -31,12 +42,36 @@ interface SidebarProps {
 }
 
 export function Sidebar({ user, onLogout }: SidebarProps) {
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
   return (
-    <aside className="flex h-screen w-64 flex-col border-r border-slate-800 bg-slate-900">
-      <div className="px-4 py-4 text-lg font-semibold text-green-400">
-        QuantVault
-      </div>
-      <nav className="flex-1 space-y-1 px-2">
+    <>
+      {/* Mobile menu button */}
+      <button
+        onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+        className="fixed left-4 top-4 z-50 rounded-lg bg-slate-800 p-2 text-slate-100 lg:hidden"
+        aria-label="Toggle menu"
+      >
+        {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+      </button>
+
+      {/* Mobile overlay */}
+      {mobileMenuOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-slate-950/50 lg:hidden"
+          onClick={() => setMobileMenuOpen(false)}
+        />
+      )}
+
+      <aside
+        className={`fixed left-0 top-0 z-40 flex h-screen w-64 flex-col border-r border-slate-800 bg-slate-900 transition-transform lg:relative lg:translate-x-0 ${
+          mobileMenuOpen ? "translate-x-0" : "-translate-x-full"
+        }`}
+      >
+        <div className="px-4 py-4 text-lg font-semibold text-green-400">
+          QuantVault
+        </div>
+        <nav className="flex-1 space-y-1 overflow-y-auto px-2">
         {navItems.map((item) => {
           const Icon = item.icon;
           return (
@@ -93,6 +128,7 @@ export function Sidebar({ user, onLogout }: SidebarProps) {
         </button>
       </div>
     </aside>
+    </>
   );
 }
 

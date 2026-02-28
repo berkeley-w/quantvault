@@ -1,12 +1,18 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 import { apiClient } from "../api/client";
-import { Security } from "../types";
+import { Security, PaginatedResponse } from "../types";
 
-export function useSecurities() {
+export function useSecurities(page: number = 1, pageSize: number = 50) {
   return useQuery({
-    queryKey: ["securities"],
-    queryFn: () => apiClient<Security[]>("/api/securities"),
+    queryKey: ["securities", page, pageSize],
+    queryFn: () => {
+      const params = new URLSearchParams({
+        page: String(page),
+        page_size: String(pageSize),
+      });
+      return apiClient<PaginatedResponse<Security>>(`/api/v1/securities?${params.toString()}`);
+    },
   });
 }
 
@@ -30,7 +36,7 @@ export function useCreateSecurity() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (data: SecurityCreate) =>
-      apiClient<Security>("/api/securities", {
+      apiClient<Security>("/api/v1/securities", {
         method: "POST",
         body: JSON.stringify(data),
       }),
@@ -46,7 +52,7 @@ export function useUpdateSecurity() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (params: { id: number; data: SecurityUpdate }) =>
-      apiClient<Security>(`/api/securities/${params.id}`, {
+      apiClient<Security>(`/api/v1/securities/${params.id}`, {
         method: "PUT",
         body: JSON.stringify(params.data),
       }),
@@ -63,7 +69,7 @@ export function useDeleteSecurity() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: number) =>
-      apiClient(`/api/securities/${id}`, { method: "DELETE" }),
+      apiClient(`/api/v1/securities/${id}`, { method: "DELETE" }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["securities"] });
       toast.success("Security deleted");

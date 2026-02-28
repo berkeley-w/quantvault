@@ -206,4 +206,22 @@ export interface TokenResponse {
   user: AuthUser;
 }
 
+export interface PaginatedResponse<T> {
+  items: T[];
+  total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+}
+
+export interface RiskWarning {
+  severity: string;
+  code: string;
+  message: string;
+}
+
+export interface TradeResponseWithWarnings extends Trade {
+  risk_warnings?: RiskWarning[];
+}
+
 

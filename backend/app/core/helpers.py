@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any, Dict, Optional
 
 
 def serialize_dt(v: Any) -> Optional[str]:
@@ -10,4 +10,16 @@ def serialize_dt(v: Any) -> Optional[str]:
     if isinstance(v, datetime):
         return v.isoformat()
     return v
+
+
+def apply_sorting(query, model: Any, sort_field: str, order: str, allowed: Dict[str, Any]):
+    """
+    Apply ORDER BY to a SQLAlchemy query using a whitelist of allowed columns.
+    """
+    column = allowed.get(sort_field)
+    if column is None:
+        return query
+    if order == "desc":
+        return query.order_by(column.desc())
+    return query.order_by(column.asc())
 

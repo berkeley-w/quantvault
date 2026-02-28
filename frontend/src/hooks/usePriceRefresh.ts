@@ -11,7 +11,7 @@ export function usePriceRefresh() {
   const statusQuery = useQuery({
     queryKey: ["price-refresh-status"],
     queryFn: () =>
-      apiClient<PriceRefreshStatus>("/api/prices/refresh/status"),
+      apiClient<PriceRefreshStatus>("/api/v1/prices/refresh/status"),
     refetchInterval: isRefreshing ? 5000 : false,
     enabled: isRefreshing,
   });
@@ -25,7 +25,7 @@ export function usePriceRefresh() {
   }, [statusQuery.data, isRefreshing, qc]);
 
   const startRefreshMutation = useMutation({
-    mutationFn: () => apiClient("/api/prices/refresh", { method: "POST" }),
+    mutationFn: () => apiClient("/api/v1/prices/refresh", { method: "POST" }),
     onSuccess: () => {
       setIsRefreshing(true);
     },

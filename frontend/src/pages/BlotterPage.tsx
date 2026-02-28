@@ -7,9 +7,13 @@ import { LoadingSpinner } from "../components/shared/LoadingSpinner";
 import { formatCurrency } from "../lib/formatters";
 
 export function BlotterPage() {
-  const { data: securities } = useSecurities();
+  const { data: securitiesData } = useSecurities();
+  const securities = securitiesData?.items || [];
   const { data: traders } = useTraderAccounts();
-  const { data: trades, isLoading } = useTrades({ status: "ACTIVE" });
+  const [page, setPage] = useState(1);
+  const pageSize = 50;
+  const { data: tradesData, isLoading } = useTrades({ status: "ACTIVE" }, page, pageSize);
+  const trades = tradesData?.items || [];
   const createTrade = useCreateTrade();
   const updateTrade = useUpdateTrade();
   const deleteTrade = useDeleteTrade();
@@ -227,6 +231,7 @@ export function BlotterPage() {
         {isLoading || !trades ? (
           <LoadingSpinner />
         ) : (
+          <>
           <DataTable
             columns={[
               {
@@ -347,6 +352,31 @@ export function BlotterPage() {
             ]}
             data={trades}
           />
+          {/* Pagination */}
+          {tradesData && tradesData.total_pages > 1 && (
+            <div className="mt-4 flex items-center justify-between">
+              <div className="text-sm text-slate-400">
+                Showing {((page - 1) * pageSize) + 1} to {Math.min(page * pageSize, tradesData.total)} of {tradesData.total}
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={page === 1}
+                  className="rounded bg-slate-800 px-3 py-1 text-sm text-slate-100 hover:bg-slate-700 disabled:opacity-50"
+                >
+                  Previous
+                </button>
+                <button
+                  onClick={() => setPage((p) => Math.min(tradesData.total_pages, p + 1))}
+                  disabled={page >= tradesData.total_pages}
+                  className="rounded bg-slate-800 px-3 py-1 text-sm text-slate-100 hover:bg-slate-700 disabled:opacity-50"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          )}
+          </>
         )}
       </div>
     </div>

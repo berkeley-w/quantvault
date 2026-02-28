@@ -6,7 +6,7 @@ import { Trader } from "../types";
 export function useTraders() {
   return useQuery({
     queryKey: ["traders"],
-    queryFn: () => apiClient<Trader[]>("/api/traders"),
+    queryFn: () => apiClient<Trader[]>("/api/v1/traders"),
   });
 }
 
@@ -26,7 +26,7 @@ export function useCreateTrader() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (data: TraderCreate) =>
-      apiClient<Trader>("/api/traders", {
+      apiClient<Trader>("/api/v1/traders", {
         method: "POST",
         body: JSON.stringify(data),
       }),
@@ -42,7 +42,7 @@ export function useUpdateTrader() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (params: { id: number; data: TraderUpdate }) =>
-      apiClient<Trader>(`/api/traders/${params.id}`, {
+      apiClient<Trader>(`/api/v1/traders/${params.id}`, {
         method: "PUT",
         body: JSON.stringify(params.data),
       }),
@@ -59,7 +59,7 @@ export function useDeleteTrader() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: number) =>
-      apiClient(`/api/traders/${id}`, { method: "DELETE" }),
+      apiClient(`/api/v1/traders/${id}`, { method: "DELETE" }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["traders"] });
       toast.success("Trader deleted");

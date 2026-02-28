@@ -7,8 +7,9 @@ Note: This now seeds trader *accounts* (User rows) and uses
 their usernames as the `trader_name` on trades, so the blotter
 and login system stay in sync.
 """
-from models import init_db, SessionLocal, Security, Trader, Trade, RestrictedList, User
-from services.auth import hash_password
+from app.database import init_db, SessionLocal
+from app.models import RestrictedList, Security, Trader, Trade, User
+from app.services.auth import hash_password
 
 def seed_data():
     init_db()

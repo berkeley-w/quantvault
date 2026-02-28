@@ -6,29 +6,56 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.core.audit import audit
-from app.core.helpers import serialize_dt
+from app.core.auth import get_current_user, require_admin
+from app.core.helpers import apply_sorting, serialize_dt
+from app.core.pagination import PaginatedResponse, PaginationParams
 from app.database import get_db
-from app.models import RestrictedList, Trade
+from app.models import RestrictedList, Trade, User
 from app.schemas.trade import RejectRequest, TradeCreate, TradeResponse, TradeUpdate
+from app.services.holdings import recompute_holdings
+from app.services.risk import check_trade_risk
+from app.services.websocket_manager import manager
 
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/trades", tags=["Trades"])
+router = APIRouter(prefix="/trades", tags=["Trades"])
 
 
-@router.get("", response_model=List[TradeResponse])
+@router.get("", response_model=PaginatedResponse[TradeResponse])
 def list_trades(
     status: str = Query("ALL", description="ACTIVE, REJECTED, or ALL"),
+    sort: str = Query("created_at", description="Sort field"),
+    order: str = Query("desc", description="Sort order: asc or desc"),
+    ticker: str | None = Query(None, description="Filter by ticker"),
+    pagination: PaginationParams = Depends(),
     db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
 ):
-    q = db.query(Trade).order_by(Trade.created_at.desc())
+    _ = user
+    sort = sort.lower()
+    order = order.lower()
+    sort_fields = {
+        "created_at": Trade.created_at,
+        "ticker": Trade.ticker,
+        "price": Trade.price,
+        "quantity": Trade.quantity,
+    }
+    q = db.query(Trade)
     if status.upper() == "ACTIVE":
         q = q.filter(Trade.status == "ACTIVE")
     elif status.upper() == "REJECTED":
         q = q.filter(Trade.status == "REJECTED")
-    rows = q.all()
-    return [
+    if ticker:
+        q = q.filter(Trade.ticker == ticker.upper().strip())
+    
+    # Get total count before pagination
+    total = q.count()
+    
+    q = apply_sorting(q, Trade, sort, order, sort_fields)
+    rows = q.offset(pagination.offset).limit(pagination.limit).all()
+    
+    items = [
         {
             "id": t.id,
             "ticker": t.ticker,
@@ -46,10 +73,16 @@ def list_trades(
         }
         for t in rows
     ]
+    
+    return PaginatedResponse.create(items, total, pagination.page, pagination.page_size)
 
 
 @router.post("", response_model=TradeResponse)
-def create_trade(body: TradeCreate, db: Session = Depends(get_db)):
+async def create_trade(
+    body: TradeCreate,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
     restricted = (
         db.query(RestrictedList)
         .filter(RestrictedList.ticker == body.ticker.upper().strip())
@@ -73,6 +106,9 @@ def create_trade(body: TradeCreate, db: Session = Depends(get_db)):
         notes=body.notes.strip() if body.notes else None,
         status="ACTIVE",
     )
+    # Check risk before creating trade
+    risk_warnings = check_trade_risk(db, body.ticker, body.side, body.quantity, body.price)
+
     db.add(t)
     db.commit()
     db.refresh(t)
@@ -82,8 +118,39 @@ def create_trade(body: TradeCreate, db: Session = Depends(get_db)):
         "trade",
         t.id,
         f"{t.side} {t.quantity} {t.ticker} @ {t.price} by {t.trader_name}",
+        user=user,
     )
-    return {
+    recompute_holdings(db)
+    # Broadcast WebSocket event (fire and forget)
+    try:
+        import asyncio
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            asyncio.create_task(manager.broadcast_event(
+                "trade_created",
+                {
+                    "id": t.id,
+                    "ticker": t.ticker,
+                    "side": t.side,
+                    "quantity": t.quantity,
+                    "price": t.price,
+                },
+            ))
+        else:
+            loop.run_until_complete(manager.broadcast_event(
+                "trade_created",
+                {
+                    "id": t.id,
+                    "ticker": t.ticker,
+                    "side": t.side,
+                    "quantity": t.quantity,
+                    "price": t.price,
+                },
+            ))
+    except Exception:
+        pass
+    
+    response = {
         "id": t.id,
         "ticker": t.ticker,
         "side": t.side,
@@ -98,10 +165,21 @@ def create_trade(body: TradeCreate, db: Session = Depends(get_db)):
         "created_at": serialize_dt(t.created_at),
         "updated_at": serialize_dt(t.updated_at),
     }
+    
+    # Add risk warnings to response
+    if risk_warnings:
+        response["risk_warnings"] = risk_warnings
+    
+    return response
 
 
 @router.put("/{id}", response_model=TradeResponse)
-def update_trade(id: int, body: TradeUpdate, db: Session = Depends(get_db)):
+async def update_trade(
+    id: int,
+    body: TradeUpdate,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
     t = db.query(Trade).filter(Trade.id == id).first()
     if not t:
         raise HTTPException(status_code=404, detail="Trade not found")
@@ -138,7 +216,36 @@ def update_trade(id: int, body: TradeUpdate, db: Session = Depends(get_db)):
         "trade",
         t.id,
         f"Updated trade {t.id}: " + ", ".join(changes),
+        user=user,
     )
+    recompute_holdings(db)
+    try:
+        import asyncio
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            asyncio.create_task(manager.broadcast_event(
+                "trade_updated",
+                {
+                    "id": t.id,
+                    "ticker": t.ticker,
+                    "side": t.side,
+                    "quantity": t.quantity,
+                    "price": t.price,
+                },
+            ))
+        else:
+            loop.run_until_complete(manager.broadcast_event(
+                "trade_updated",
+                {
+                    "id": t.id,
+                    "ticker": t.ticker,
+                    "side": t.side,
+                    "quantity": t.quantity,
+                    "price": t.price,
+                },
+            ))
+    except Exception:
+        pass
     return {
         "id": t.id,
         "ticker": t.ticker,
@@ -157,18 +264,37 @@ def update_trade(id: int, body: TradeUpdate, db: Session = Depends(get_db)):
 
 
 @router.delete("/{id}")
-def delete_trade(id: int, db: Session = Depends(get_db)):
+async def delete_trade(
+    id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
     t = db.query(Trade).filter(Trade.id == id).first()
     if not t:
         raise HTTPException(status_code=404, detail="Trade not found")
     db.delete(t)
     db.commit()
-    audit(db, "TRADE_DELETED", "trade", id, f"Deleted trade {id}")
+    audit(db, "TRADE_DELETED", "trade", id, f"Deleted trade {id}", user=user)
+    recompute_holdings(db)
+    try:
+        import asyncio
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            asyncio.create_task(manager.broadcast_event("trade_deleted", {"id": id}))
+        else:
+            loop.run_until_complete(manager.broadcast_event("trade_deleted", {"id": id}))
+    except Exception:
+        pass
     return {"detail": "Trade deleted"}
 
 
 @router.post("/{id}/reject")
-def reject_trade(id: int, body: RejectRequest, db: Session = Depends(get_db)):
+async def reject_trade(
+    id: int,
+    body: RejectRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_admin),
+):
     t = db.query(Trade).filter(Trade.id == id).first()
     if not t:
         raise HTTPException(status_code=404, detail="Trade not found")
@@ -183,12 +309,27 @@ def reject_trade(id: int, body: RejectRequest, db: Session = Depends(get_db)):
         "trade",
         t.id,
         f"Rejected trade {t.id}: {t.rejection_reason}",
+        user=user,
     )
+    recompute_holdings(db)
+    try:
+        import asyncio
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            asyncio.create_task(manager.broadcast_event("trade_rejected", {"id": t.id}))
+        else:
+            loop.run_until_complete(manager.broadcast_event("trade_rejected", {"id": t.id}))
+    except Exception:
+        pass
     return {"detail": "Trade rejected", "id": t.id, "status": t.status}
 
 
 @router.post("/{id}/reinstate")
-def reinstate_trade(id: int, db: Session = Depends(get_db)):
+async def reinstate_trade(
+    id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_admin),
+):
     t = db.query(Trade).filter(Trade.id == id).first()
     if not t:
         raise HTTPException(status_code=404, detail="Trade not found")
@@ -197,6 +338,24 @@ def reinstate_trade(id: int, db: Session = Depends(get_db)):
     t.rejected_at = None
     db.commit()
     db.refresh(t)
-    audit(db, "TRADE_REINSTATED", "trade", t.id, f"Reinstated trade {t.id}")
+    audit(
+        db,
+        "TRADE_REINSTATED",
+        "trade",
+        t.id,
+        f"Reinstated trade {t.id}",
+        user=user,
+    )
+    recompute_holdings(db)
+    try:
+        import asyncio
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            asyncio.create_task(manager.broadcast_event("trade_reinstated", {"id": t.id}))
+        else:
+            loop.run_until_complete(manager.broadcast_event("trade_reinstated", {"id": t.id}))
+    except Exception:
+        pass
+    recompute_holdings(db)
     return {"detail": "Trade reinstated", "id": t.id, "status": t.status}
 
