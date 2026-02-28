@@ -26,20 +26,22 @@ from app.routers import (
 # Create v1 router
 v1_router = APIRouter(prefix="/api/v1")
 
-# Mount all routers, stripping their /api prefix and adding /api/v1
-v1_router.include_router(auth.router, prefix="/auth")
-v1_router.include_router(securities.router, prefix="/securities")
-v1_router.include_router(traders.router, prefix="/traders")
-v1_router.include_router(trades.router, prefix="/trades")
-v1_router.include_router(holdings.router, prefix="")
-v1_router.include_router(prices.router, prefix="/prices")
-v1_router.include_router(price_history.router, prefix="/prices")
-v1_router.include_router(portfolio.router, prefix="")
-v1_router.include_router(analytics.router, prefix="")
-v1_router.include_router(technical_analysis.router, prefix="/analytics/technical")
-v1_router.include_router(strategies.router, prefix="/strategies")
-v1_router.include_router(signals.router, prefix="/signals")
-v1_router.include_router(compliance.router, prefix="/restricted")
-v1_router.include_router(audit.router, prefix="/audit")
-v1_router.include_router(exports.router, prefix="/export")
-v1_router.include_router(risk.router, prefix="/risk")
+# Mount all routers so paths match the frontend's /api/v1/* expectations.
+# Routers that already define their own resource prefix (e.g. "/traders")
+# are included without an extra prefix here to avoid duplicating segments.
+v1_router.include_router(auth.router, prefix="/auth")  # /api/v1/auth/...
+v1_router.include_router(securities.router)  # /api/v1/securities/...
+v1_router.include_router(traders.router)  # /api/v1/traders/...
+v1_router.include_router(trades.router)  # /api/v1/trades/...
+v1_router.include_router(holdings.router)  # /api/v1/holdings, /api/v1/metrics
+v1_router.include_router(prices.router)  # /api/v1/prices/...
+v1_router.include_router(price_history.router)  # /api/v1/prices/history...
+v1_router.include_router(portfolio.router)  # /api/v1/portfolio/performance, /api/v1/snapshots
+v1_router.include_router(analytics.router)  # /api/v1/analytics
+v1_router.include_router(technical_analysis.router)  # /api/v1/analytics/technical/...
+v1_router.include_router(strategies.router)  # /api/v1/strategies/...
+v1_router.include_router(signals.router)  # /api/v1/signals/...
+v1_router.include_router(compliance.router)  # /api/v1/restricted/...
+v1_router.include_router(audit.router)  # /api/v1/audit/...
+v1_router.include_router(exports.router)  # /api/v1/export/...
+v1_router.include_router(risk.router)  # /api/v1/risk
