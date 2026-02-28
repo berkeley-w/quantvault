@@ -17,7 +17,9 @@ def seed_data():
     try:
         # Check if any Security rows exist (already seeded)
         if db.query(Security).first():
-            print("Database already seeded. No action taken.")
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.info("Database already seeded. No action taken.")
             db.close()
             return
 
@@ -108,7 +110,9 @@ def seed_data():
             db.add(RestrictedList(**r))
 
         db.commit()
-        print("Database seeded: securities, traders, trades, restricted list.")
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info("Database seeded: securities, traders, trades, restricted list.")
 
     finally:
         db.close()

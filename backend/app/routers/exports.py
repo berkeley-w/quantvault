@@ -1,6 +1,5 @@
 import csv
 import io
-import logging
 from datetime import datetime
 from typing import List
 
@@ -10,12 +9,9 @@ from sqlalchemy.orm import Session
 
 from app.core.auth import get_current_user
 from app.database import get_db
-from app.models import Security, Trade, User
+from app.models import Trade, User
 from app.services.holdings import _compute_holdings
 from app.routers.analytics import get_analytics
-
-
-logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/export", tags=["Export"])
 
