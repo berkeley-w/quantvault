@@ -1,10 +1,10 @@
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect, Query
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
 
 from app.core.auth import decode_token
-from app.database import get_db
+from app.database import SessionLocal
 from app.models import User
 from app.services.websocket_manager import manager
 
@@ -35,7 +35,7 @@ async def websocket_endpoint(
             return
 
         # Verify user exists and is active
-        db = next(get_db())
+        db = SessionLocal()
         try:
             user = db.query(User).filter(User.id == int(user_id)).first()
             if not user or not user.is_active:

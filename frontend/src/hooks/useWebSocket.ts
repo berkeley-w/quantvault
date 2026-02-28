@@ -31,7 +31,6 @@ export function useWebSocket() {
         wsRef.current = ws;
 
         ws.onopen = () => {
-          console.log("WebSocket connected");
           if (reconnectTimeoutRef.current) {
             clearTimeout(reconnectTimeoutRef.current);
             reconnectTimeoutRef.current = null;
@@ -43,23 +42,22 @@ export function useWebSocket() {
             const message: WebSocketEvent = JSON.parse(event.data);
             handleWebSocketEvent(message);
           } catch (e) {
-            console.error("Failed to parse WebSocket message:", e);
+            // Silently handle parse errors - malformed messages are ignored
           }
         };
 
-        ws.onerror = (error) => {
-          console.error("WebSocket error:", error);
+        ws.onerror = () => {
+          // WebSocket errors are handled by onclose
         };
 
         ws.onclose = () => {
-          console.log("WebSocket disconnected, reconnecting...");
           // Reconnect after 3 seconds
           reconnectTimeoutRef.current = window.setTimeout(() => {
             connect();
           }, 3000);
         };
-      } catch (error) {
-        console.error("Failed to create WebSocket:", error);
+      } catch {
+        // Failed to create WebSocket - will retry on next connection attempt
       }
     };
 
@@ -88,7 +86,8 @@ export function useWebSocket() {
           qc.invalidateQueries({ queryKey: ["signals"] });
           break;
         default:
-          console.log("Unknown WebSocket event type:", event.type);
+          // Unknown event types are ignored
+          break;
       }
     };
 

@@ -1,0 +1,36 @@
+{"sessionId":"d727a1","location":"AuthPage.tsx:beforeOnAuthenticated","message":"Login response received","data":{"hasUser":true,"payloadKeys":["access_token","token_type","user"],"userKeys":["id","username","email","role","is_active","created_at"]},"timestamp":1772256643557,"hypothesisId":"H1_H5"}
+{"sessionId":"d727a1","location":"App.tsx:onAuthenticated","message":"Setting auth state","data":{"hasUser":true},"timestamp":1772256643558,"hypothesisId":"H1_H5"}
+{"sessionId":"d727a1","location":"App.tsx:renderAuthenticated","message":"Rendering authenticated routes","data":{"path":"//"},"timestamp":1772256643563,"hypothesisId":"H2"}
+{"sessionId":"d727a1","location":"Layout.tsx:render","message":"Layout rendering","data":{"hasAuthUser":true,"userRole":"admin"},"timestamp":1772256643572,"hypothesisId":"H1"}
+{"sessionId":"d727a1","location":"DashboardPage.tsx:renderStart","message":"DashboardPage render started","data":{},"timestamp":1772256643583,"hypothesisId":"H2_H3"}
+{"sessionId":"d727a1","location":"DashboardPage.tsx:mount","message":"DashboardPage mounted","data":{},"timestamp":1772256643601,"hypothesisId":"H2_H3"}
+{"sessionId":"d727a1","location":"DashboardPage.tsx:renderStart","message":"DashboardPage render started","data":{},"timestamp":1772256650652,"hypothesisId":"H2_H3"}
+{"sessionId":"d727a1","location":"App.tsx:renderAuthenticated","message":"Rendering authenticated routes","data":{"path":"/"},"timestamp":1772256838971,"hypothesisId":"H2"}
+{"sessionId":"d727a1","location":"Layout.tsx:render","message":"Layout rendering","data":{"hasAuthUser":true,"userRole":"admin"},"timestamp":1772256838976,"hypothesisId":"H1"}
+{"sessionId":"d727a1","location":"DashboardPage.tsx:renderStart","message":"DashboardPage render started","data":{},"timestamp":1772256838983,"hypothesisId":"H2_H3"}
+{"sessionId":"d727a1","location":"DashboardPage.tsx:mount","message":"DashboardPage mounted","data":{},"timestamp":1772256838994,"hypothesisId":"H2_H3"}
+{"sessionId":"d727a1","location":"DashboardPage.tsx:renderStart","message":"DashboardPage render started","data":{},"timestamp":1772256846056,"hypothesisId":"H2_H3"}
+{"sessionId":"d727a1","location":"DashboardPage.tsx:renderStart","message":"DashboardPage render started","data":{},"timestamp":1772256846120,"hypothesisId":"H2_H3"}
+{"sessionId":"d727a1","location":"App.tsx:renderAuthenticated","message":"Rendering authenticated routes","data":{"path":"/"},"timestamp":1772256856373,"hypothesisId":"H2"}
+{"sessionId":"d727a1","location":"Layout.tsx:render","message":"Layout rendering","data":{"hasAuthUser":true,"userRole":"admin"},"timestamp":1772256856378,"hypothesisId":"H1"}
+{"sessionId":"d727a1","location":"DashboardPage.tsx:renderStart","message":"DashboardPage render started","data":{},"timestamp":1772256856390,"hypothesisId":"H2_H3"}
+{"sessionId":"d727a1","location":"DashboardPage.tsx:mount","message":"DashboardPage mounted","data":{},"timestamp":1772256856413,"hypothesisId":"H2_H3"}
+{"sessionId":"d727a1","location":"DashboardPage.tsx:renderStart","message":"DashboardPage render started","data":{},"timestamp":1772256863459,"hypothesisId":"H2_H3"}
+{"sessionId":"d727a1","location":"DashboardPage.tsx:renderStart","message":"DashboardPage render started","data":{},"timestamp":1772256863475,"hypothesisId":"H2_H3"}
+{"sessionId":"d727a1","location":"AuthPage.tsx:beforeOnAuthenticated","message":"Login response received","data":{"hasUser":true,"payloadKeys":["access_token","token_type","user"],"userKeys":["id","username","email","role","is_active","created_at"]},"timestamp":1772257003028,"hypothesisId":"H1_H5"}
+{"sessionId":"d727a1","location":"App.tsx:onAuthenticated","message":"Setting auth state","data":{"hasUser":true},"timestamp":1772257003029,"hypothesisId":"H1_H5"}
+{"sessionId":"d727a1","location":"App.tsx:renderAuthenticated","message":"Rendering authenticated routes","data":{"path":"/"},"timestamp":1772257003032,"hypothesisId":"H2"}
+{"sessionId":"d727a1","location":"Layout.tsx:render","message":"Layout rendering","data":{"hasAuthUser":true,"userRole":"admin"},"timestamp":1772257003034,"hypothesisId":"H1"}
+{"sessionId":"d727a1","location":"DashboardPage.tsx:renderStart","message":"DashboardPage render started","data":{},"timestamp":1772257003037,"hypothesisId":"H2_H3"}
+{"sessionId":"d727a1","location":"DashboardPage.tsx:mount","message":"DashboardPage mounted","data":{},"timestamp":1772257003047,"hypothesisId":"H2_H3"}
+{"sessionId":"d727a1","location":"DashboardPage.tsx:renderStart","message":"DashboardPage render started","data":{},"timestamp":1772257003075,"hypothesisId":"H2_H3"}
+{"sessionId":"d727a1","location":"DashboardPage.tsx:renderStart","message":"DashboardPage render started","data":{},"timestamp":1772257003104,"hypothesisId":"H2_H3"}
+{"sessionId":"d727a1","location":"DashboardPage.tsx:renderStart","message":"DashboardPage render started","data":{},"timestamp":1772257003112,"hypothesisId":"H2_H3"}
+{"sessionId":"d727a1","location":"Layout.tsx:render","message":"Layout rendering","data":{"hasAuthUser":true,"userRole":"admin"},"timestamp":1772257087908,"hypothesisId":"H1"}
+{"sessionId":"d727a1","location":"App.tsx:renderAuthenticated","message":"Rendering authenticated routes","data":{"path":"/"},"timestamp":1772257087901,"hypothesisId":"H2"}
+{"sessionId":"d727a1","location":"DashboardPage.tsx:renderStart","message":"DashboardPage render started","data":{},"timestamp":1772257087919,"hypothesisId":"H2_H3"}
+{"sessionId":"d727a1","location":"DashboardPage.tsx:mount","message":"DashboardPage mounted","data":{},"timestamp":1772257087935,"hypothesisId":"H2_H3"}
+{"sessionId":"d727a1","location":"DashboardPage.tsx:renderStart","message":"DashboardPage render started","data":{},"timestamp":1772257087971,"hypothesisId":"H2_H3"}
+{"sessionId":"d727a1","location":"DashboardPage.tsx:renderStart","message":"DashboardPage render started","data":{},"timestamp":1772257087997,"hypothesisId":"H2_H3"}
+{"sessionId":"d727a1","location":"DashboardPage.tsx:renderStart","message":"DashboardPage render started","data":{},"timestamp":1772257088005,"hypothesisId":"H2_H3"}
+{"sessionId":"d727a1","location":"DashboardPage.tsx:renderStart","message":"DashboardPage render started","data":{},"timestamp":1772257088042,"hypothesisId":"H2_H3"}
