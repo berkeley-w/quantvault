@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.core.auth import get_current_user
 from app.core.helpers import serialize_dt
+from app.core.pagination import PaginatedResponse, PaginationParams
 from app.database import get_db
 from app.models import AuditLog, User
 from app.schemas.audit import AuditResponse
@@ -16,10 +17,10 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/audit", tags=["Audit"])
 
 
-@router.get("", response_model=List[AuditResponse])
+@router.get("", response_model=PaginatedResponse[AuditResponse])
 def list_audit(
     action: str | None = Query(None, description="Filter by action code"),
-    limit: int = Query(500, ge=1, le=2000),
+    pagination: PaginationParams = Depends(),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -27,8 +28,10 @@ def list_audit(
     q = db.query(AuditLog)
     if action:
         q = q.filter(AuditLog.action == action)
-    rows = q.order_by(AuditLog.timestamp.desc()).limit(limit).all()
-    return [
+    total = q.count()
+    rows = q.order_by(AuditLog.timestamp.desc()).offset(pagination.offset).limit(pagination.limit).all()
+    
+    items = [
         {
             "id": a.id,
             "action": a.action,
@@ -39,4 +42,6 @@ def list_audit(
         }
         for a in rows
     ]
+    
+    return PaginatedResponse.create(items, total, pagination.page, pagination.page_size)
 

@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.core.audit import audit
 from app.core.auth import get_current_user, require_admin
 from app.core.helpers import apply_sorting, serialize_dt
+from app.core.pagination import PaginatedResponse, PaginationParams
 from app.database import get_db
 from app.models import Security, User
 from app.schemas.security import SecurityCreate, SecurityResponse, SecurityUpdate
@@ -18,10 +19,11 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/securities", tags=["Securities"])
 
 
-@router.get("", response_model=List[SecurityResponse])
+@router.get("", response_model=PaginatedResponse[SecurityResponse])
 def list_securities(
     sort: str = Query("ticker", description="Sort field"),
     order: str = Query("asc", description="Sort order: asc or desc"),
+    pagination: PaginationParams = Depends(),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -36,9 +38,11 @@ def list_securities(
         "created_at": Security.created_at,
     }
     q = db.query(Security)
+    total = q.count()
     q = apply_sorting(q, Security, sort, order, sort_fields)
-    rows = q.all()
-    return [
+    rows = q.offset(pagination.offset).limit(pagination.limit).all()
+    
+    items = [
         {
             "id": s.id,
             "ticker": s.ticker,
@@ -51,6 +55,8 @@ def list_securities(
         }
         for s in rows
     ]
+    
+    return PaginatedResponse.create(items, total, pagination.page, pagination.page_size)
 
 
 @router.post("", response_model=SecurityResponse)

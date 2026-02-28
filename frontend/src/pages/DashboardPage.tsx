@@ -2,10 +2,23 @@ import { useMetrics } from "../hooks/useHoldings";
 import { useAnalytics, usePortfolioPerformance } from "../hooks/useAnalytics";
 import { useSecurities } from "../hooks/useSecurities";
 import { usePriceRefresh } from "../hooks/usePriceRefresh";
+import { useRiskMetrics } from "../hooks/useRisk";
+import { useSignals } from "../hooks/useSignals";
+import { useSnapshots } from "../hooks/useAnalytics";
 import { MetricCard } from "../components/shared/MetricCard";
 import { DataTable } from "../components/shared/DataTable";
 import { formatCurrency, formatPercent, pnlColor } from "../lib/formatters";
 import { LoadingSpinner } from "../components/shared/LoadingSpinner";
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+} from "recharts";
 
 export function DashboardPage() {
   const { data: metrics, isLoading: metricsLoading } = useMetrics();
@@ -16,9 +29,12 @@ export function DashboardPage() {
   const { data: analytics } = useAnalytics();
   const { startRefresh, isRefreshing } = usePriceRefresh();
   const { data: securities } = useSecurities();
+  const { data: riskMetrics } = useRiskMetrics();
+  const { data: recentSignals } = useSignals(undefined, undefined, undefined, undefined, 1, 10);
+  const { data: snapshots } = useSnapshots();
 
   const sharesByTicker =
-    securities?.reduce<Record<string, number | null>>((acc, sec) => {
+    securities?.items?.reduce<Record<string, number | null>>((acc, sec) => {
       acc[sec.ticker] = sec.shares_outstanding ?? null;
       return acc;
     }, {}) ?? {};
@@ -234,25 +250,112 @@ export function DashboardPage() {
         )}
       </div>
 
-      {/* Optional summary from analytics (beta, concentration) */}
-      {analytics && (
-        <div className="grid gap-4 md:grid-cols-3">
+      {/* Risk Metrics Summary */}
+      {riskMetrics && (
+        <div className="grid gap-4 md:grid-cols-4">
           <MetricCard
             label="Portfolio Beta"
+            value={riskMetrics.portfolio_beta.toFixed(2)}
+          />
+          <MetricCard
+            label="VaR (95%)"
             value={
-              analytics.portfolio.portfolio_beta != null
-                ? analytics.portfolio.portfolio_beta.toFixed(2)
+              riskMetrics.var_95 != null
+                ? formatPercent(riskMetrics.var_95 * 100)
                 : "N/A"
             }
           />
           <MetricCard
-            label="HHI Concentration"
-            value={analytics.portfolio.hhi_concentration.toFixed(3)}
+            label="Sharpe Ratio"
+            value={
+              riskMetrics.sharpe_ratio != null
+                ? riskMetrics.sharpe_ratio.toFixed(2)
+                : "N/A"
+            }
           />
           <MetricCard
-            label="Concentration Rating"
-            value={analytics.portfolio.concentration_rating}
+            label="Concentration"
+            value={riskMetrics.concentration.concentration_rating}
           />
+        </div>
+      )}
+
+      {/* Recent Signals */}
+      {recentSignals && recentSignals.items && recentSignals.items.length > 0 && (
+        <div className="rounded-xl border border-slate-800 bg-slate-900 p-4">
+          <h2 className="mb-3 text-sm font-semibold text-slate-200">Recent Signals</h2>
+          <DataTable
+            columns={[
+              { key: "ticker", header: "Ticker" },
+              {
+                key: "signal_type",
+                header: "Type",
+                render: (r: any) => (
+                  <span
+                    className={`rounded px-2 py-1 text-xs ${
+                      r.signal_type === "BUY"
+                        ? "bg-green-500/20 text-green-400"
+                        : r.signal_type === "SELL"
+                        ? "bg-red-500/20 text-red-400"
+                        : "bg-slate-500/20 text-slate-400"
+                    }`}
+                  >
+                    {r.signal_type}
+                  </span>
+                ),
+              },
+              {
+                key: "signal_strength",
+                header: "Strength",
+                align: "right",
+                render: (r: any) => `${(r.signal_strength * 100).toFixed(1)}%`,
+              },
+              {
+                key: "timestamp",
+                header: "Time",
+                render: (r: any) => new Date(r.timestamp).toLocaleString(),
+              },
+            ]}
+            data={recentSignals.items.slice(0, 5)}
+          />
+        </div>
+      )}
+
+      {/* Portfolio Equity Curve */}
+      {snapshots && snapshots.snapshots.length > 0 && (
+        <div className="rounded-xl border border-slate-800 bg-slate-900 p-4">
+          <h2 className="mb-4 text-sm font-semibold text-slate-200">
+            Portfolio Equity Curve
+          </h2>
+          <ResponsiveContainer width="100%" height={300}>
+            <LineChart
+              data={snapshots.snapshots.map((s) => ({
+                date: new Date(s.date).toLocaleDateString(),
+                value: s.total_market_value,
+                pnl: s.total_pnl,
+              }))}
+            >
+              <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+              <XAxis dataKey="date" stroke="#94a3b8" />
+              <YAxis stroke="#94a3b8" />
+              <Tooltip
+                contentStyle={{
+                  backgroundColor: "#1e293b",
+                  border: "1px solid #334155",
+                  borderRadius: "8px",
+                }}
+              />
+              <Legend />
+              <Line
+                type="monotone"
+                dataKey="value"
+                stroke="#10b981"
+                strokeWidth={2}
+                name="Portfolio Value"
+                dot={false}
+              />
+            </LineChart>
+          </ResponsiveContainer>
         </div>
       )}
     </div>

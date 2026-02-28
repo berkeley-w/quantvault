@@ -9,13 +9,17 @@ from sqlalchemy.orm import Session
 from app.core.audit import audit
 from app.models import CompanyOverview, PortfolioSnapshot, Security
 from app.services.alpha_vantage import get_company_overview, get_quote
+from app.services.holdings import recompute_holdings
 from app.services.portfolio import _compute_portfolio_performance
+from app.services.price_history import upsert_today_bar
+from app.services.strategy_evaluation import generate_and_store_signals
+from app.services.websocket_manager import manager
 
 
 logger = logging.getLogger(__name__)
 
 
-def refresh_all_prices(db: Session) -> Dict[str, Any]:
+async def refresh_all_prices(db: Session) -> Dict[str, Any]:
     """
     Fetch quotes for all securities and update their stored price.
     Also refreshes cached company overview data when older than 24 hours
@@ -45,6 +49,8 @@ def refresh_all_prices(db: Session) -> Dict[str, Any]:
         last_call_ts = time.time()
         if quote and quote.get("current_price") is not None:
             sec.price = float(quote["current_price"])
+            # Also upsert today's daily bar
+            upsert_today_bar(db, sec.ticker, quote)
             updated.append(sec.ticker)
         else:
             failed.append(sec.ticker)
@@ -114,6 +120,15 @@ def refresh_all_prices(db: Session) -> Dict[str, Any]:
 
     db.commit()
 
+    # After prices are updated, recompute holdings and evaluate strategies
+    recompute_holdings(db)
+
+    for ticker in updated:
+        try:
+            generate_and_store_signals(db, ticker)
+        except Exception as e:
+            logger.warning(f"Failed to generate signals for {ticker}: {e}")
+
     audit(
         db,
         "SECURITIES_PRICES_REFRESHED",
@@ -121,6 +136,17 @@ def refresh_all_prices(db: Session) -> Dict[str, Any]:
         None,
         f"Refreshed prices for {len(updated)} securities; {len(failed)} failed",
     )
+
+    # Broadcast price refresh event
+    await manager.broadcast_event(
+        "prices_refreshed",
+        {
+            "updated_count": len(updated),
+            "failed_count": len(failed),
+            "updated_tickers": updated,
+        },
+    )
+
     return {
         "updated_count": len(updated),
         "failed_count": len(failed),

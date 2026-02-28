@@ -8,7 +8,7 @@ from app.database import get_db
 from app.core.auth import get_current_user
 from app.models import Security, Trade, User
 from app.schemas.holdings import HoldingResponse, MetricsResponse
-from app.services.holdings import _compute_holdings
+from app.services.holdings import _compute_holdings, get_holdings_from_materialized
 
 
 logger = logging.getLogger(__name__)
@@ -22,7 +22,11 @@ def get_holdings(
     user: User = Depends(get_current_user),
 ):
     _ = user
-    return _compute_holdings(db)
+    # Try materialized first, fallback to computation
+    holdings = get_holdings_from_materialized(db)
+    if not holdings:
+        holdings = _compute_holdings(db)
+    return holdings
 
 
 @router.get("/metrics", response_model=MetricsResponse)
@@ -31,7 +35,10 @@ def get_metrics(
     user: User = Depends(get_current_user),
 ):
     _ = user
-    holdings_data = _compute_holdings(db)
+    # Try materialized first, fallback to computation
+    holdings_data = get_holdings_from_materialized(db)
+    if not holdings_data:
+        holdings_data = _compute_holdings(db)
     total_market_value = sum(h["market_value"] for h in holdings_data)
     total_unrealized_pnl = sum(h["unrealized_pnl"] for h in holdings_data)
     positions = [h for h in holdings_data if h["net_quantity"] != 0]

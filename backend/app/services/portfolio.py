@@ -3,7 +3,7 @@ from typing import Any, Dict
 
 from sqlalchemy.orm import Session
 
-from app.services.holdings import _compute_holdings
+from app.services.holdings import _compute_holdings, get_holdings_from_materialized
 
 
 logger = logging.getLogger(__name__)
@@ -12,7 +12,10 @@ logger = logging.getLogger(__name__)
 def _compute_portfolio_performance(db: Session) -> Dict[str, Any]:
     """Calculate portfolio performance from ACTIVE trades and current prices."""
 
-    holdings_data = _compute_holdings(db)
+    # Try materialized first, fallback to computation
+    holdings_data = get_holdings_from_materialized(db)
+    if not holdings_data:
+        holdings_data = _compute_holdings(db)
     breakdown = []
     total_market_value = 0.0
     total_cost_basis = 0.0

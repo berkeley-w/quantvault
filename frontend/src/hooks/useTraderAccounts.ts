@@ -5,7 +5,7 @@ import type { AuthUser } from "../types";
 export function useTraderAccounts() {
   return useQuery({
     queryKey: ["trader-accounts"],
-    queryFn: () => apiClient<AuthUser[]>("/api/auth/trader-choices"),
+    queryFn: () => apiClient<AuthUser[]>("/api/v1/auth/trader-choices"),
   });
 }
 

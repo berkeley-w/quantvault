@@ -6,7 +6,7 @@ import { RestrictedEntry } from "../types";
 export function useRestrictedList() {
   return useQuery({
     queryKey: ["restricted"],
-    queryFn: () => apiClient<RestrictedEntry[]>("/api/restricted"),
+    queryFn: () => apiClient<RestrictedEntry[]>("/api/v1/restricted"),
   });
 }
 
@@ -20,7 +20,7 @@ export function useCreateRestricted() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (data: RestrictedCreate) =>
-      apiClient<RestrictedEntry>("/api/restricted", {
+      apiClient<RestrictedEntry>("/api/v1/restricted", {
         method: "POST",
         body: JSON.stringify(data),
       }),
@@ -37,7 +37,7 @@ export function useDeleteRestricted() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: number) =>
-      apiClient(`/api/restricted/${id}`, {
+      apiClient(`/api/v1/restricted/${id}`, {
         method: "DELETE",
       }),
     onSuccess: () => {

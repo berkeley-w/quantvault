@@ -43,13 +43,26 @@ def create_app() -> FastAPI:
         trades,
         holdings,
         prices,
+        price_history,
         portfolio,
         analytics,
+        technical_analysis,
+        strategies,
+        signals,
         compliance,
         audit,
         exports,
     )
+    from app.routers.v1.router import v1_router
+    from app.routers import risk, websocket
 
+    # Mount WebSocket endpoint
+    app.include_router(websocket.router)
+    
+    # Mount risk router
+    app.include_router(risk.router)
+
+    # Mount routers at /api/ for backward compatibility
     for r in [
         auth,
         securities,
@@ -57,13 +70,20 @@ def create_app() -> FastAPI:
         trades,
         holdings,
         prices,
+        price_history,
         portfolio,
         analytics,
+        technical_analysis,
+        strategies,
+        signals,
         compliance,
         audit,
         exports,
     ]:
         app.include_router(r.router)
+
+    # Mount v1 router (already has /api/v1 prefix)
+    app.include_router(v1_router)
 
     # Simple health check
     @app.get("/health", tags=["System"])
