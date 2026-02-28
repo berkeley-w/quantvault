@@ -5,7 +5,8 @@ import { DataTable } from "../components/shared/DataTable";
 import { LoadingSpinner } from "../components/shared/LoadingSpinner";
 
 export function RestrictedPage() {
-  const { data: securities } = useSecurities();
+  const { data: securitiesData } = useSecurities();
+  const securities = securitiesData?.items || [];
   const { data, isLoading } = useRestrictedList();
   const createRestricted = useCreateRestricted();
   const deleteRestricted = useDeleteRestricted();

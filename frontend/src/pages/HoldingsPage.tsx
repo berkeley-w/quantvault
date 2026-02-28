@@ -2,11 +2,13 @@ import { useHoldings } from "../hooks/useHoldings";
 import { useSecurities } from "../hooks/useSecurities";
 import { DataTable } from "../components/shared/DataTable";
 import { LoadingSpinner } from "../components/shared/LoadingSpinner";
+import { DataLoadError } from "../components/shared/DataLoadError";
 import { formatCurrency, formatPercent, pnlColor } from "../lib/formatters";
 
 export function HoldingsPage() {
-  const { data, isLoading } = useHoldings();
-  const { data: securities } = useSecurities();
+  const { data, isLoading, isError, error, refetch } = useHoldings();
+  const { data: securitiesData } = useSecurities();
+  const securities = securitiesData?.items || [];
 
   const sharesByTicker =
     securities?.reduce<Record<string, number | null>>((acc, sec) => {
@@ -17,7 +19,9 @@ export function HoldingsPage() {
   return (
     <div className="space-y-4">
       <h1 className="text-2xl font-semibold text-slate-100">Holdings</h1>
-      {isLoading || !data ? (
+      {isError ? (
+        <DataLoadError message={error?.message} onRetry={() => refetch()} />
+      ) : isLoading || !data ? (
         <LoadingSpinner />
       ) : (
         <DataTable
