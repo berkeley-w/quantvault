@@ -63,7 +63,10 @@ export function useCreateTrade() {
       if (response.risk_warnings && response.risk_warnings.length > 0) {
         const warnings = response.risk_warnings.map((w) => w.message).join("; ");
         toast.success("Trade created", { duration: 4000 });
-        toast.warning(`Risk warnings: ${warnings}`, { duration: 6000 });
+        toast(`Risk warnings: ${warnings}`, {
+          duration: 6000,
+          icon: "⚠️",
+        });
       } else {
         toast.success("Trade created");
       }
