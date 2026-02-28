@@ -1,7 +1,11 @@
 from datetime import datetime
-from typing import Optional
+from typing import List, Optional
 
 from pydantic import BaseModel, ConfigDict
+
+
+class RiskWarningMessage(BaseModel):
+    message: str
 
 
 class TradeCreate(BaseModel):
@@ -40,6 +44,12 @@ class TradeResponse(BaseModel):
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class TradeResponseWithWarnings(TradeResponse):
+    """Response for POST /trades; may include risk_warnings."""
+
+    risk_warnings: Optional[List[RiskWarningMessage]] = None
 
 
 class RejectRequest(BaseModel):

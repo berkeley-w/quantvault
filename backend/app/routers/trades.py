@@ -11,7 +11,7 @@ from app.core.helpers import apply_sorting, serialize_dt
 from app.core.pagination import PaginatedResponse, PaginationParams
 from app.database import get_db
 from app.models import RestrictedList, Trade, User
-from app.schemas.trade import RejectRequest, TradeCreate, TradeResponse, TradeUpdate
+from app.schemas.trade import RejectRequest, TradeCreate, TradeResponse, TradeResponseWithWarnings, TradeUpdate
 from app.services.holdings import recompute_holdings
 from app.services.risk import check_trade_risk
 from app.services.websocket_manager import manager
@@ -77,7 +77,7 @@ def list_trades(
     return PaginatedResponse.create(items, total, pagination.page, pagination.page_size)
 
 
-@router.post("", response_model=TradeResponse)
+@router.post("", response_model=TradeResponseWithWarnings)
 async def create_trade(
     body: TradeCreate,
     db: Session = Depends(get_db),
@@ -161,15 +161,12 @@ async def create_trade(
         "notes": t.notes,
         "status": t.status,
         "rejection_reason": t.rejection_reason,
-        "rejected_at": t.rejected_at,
+        "rejected_at": serialize_dt(t.rejected_at),
         "created_at": serialize_dt(t.created_at),
         "updated_at": serialize_dt(t.updated_at),
     }
-    
-    # Add risk warnings to response
     if risk_warnings:
-        response["risk_warnings"] = risk_warnings
-    
+        response["risk_warnings"] = [{"message": w.get("message", "")} for w in risk_warnings]
     return response
 
 
