@@ -4,12 +4,13 @@ import { apiClient } from "../api/client";
 import { AuditRecord, PaginatedResponse } from "../types";
 import { DataTable } from "../components/shared/DataTable";
 import { LoadingSpinner } from "../components/shared/LoadingSpinner";
+import { DataLoadError } from "../components/shared/DataLoadError";
 import { formatDateTime } from "../lib/formatters";
 
 export function AuditPage() {
   const [page, setPage] = useState(1);
   const pageSize = 50;
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ["audit", page, pageSize],
     queryFn: () => {
       const params = new URLSearchParams({
@@ -24,7 +25,9 @@ export function AuditPage() {
     <div className="space-y-6">
       <h1 className="text-2xl font-semibold text-slate-100">Audit Log</h1>
       <div className="rounded-xl border border-slate-800 bg-slate-900 p-4">
-        {isLoading || !data ? (
+        {isError ? (
+          <DataLoadError message={error?.message} onRetry={() => refetch()} />
+        ) : isLoading || !data ? (
           <LoadingSpinner />
         ) : (
           <>

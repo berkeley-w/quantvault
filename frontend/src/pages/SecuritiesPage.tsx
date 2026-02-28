@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useSecurities, useCreateSecurity, useUpdateSecurity, useDeleteSecurity } from "../hooks/useSecurities";
 import { DataTable } from "../components/shared/DataTable";
 import { LoadingSpinner } from "../components/shared/LoadingSpinner";
+import { DataLoadError } from "../components/shared/DataLoadError";
 import { formatCurrency } from "../lib/formatters";
 import { apiClient } from "../api/client";
 import { PriceQuote } from "../types";
@@ -9,7 +10,7 @@ import { PriceQuote } from "../types";
 export function SecuritiesPage() {
   const [page, setPage] = useState(1);
   const pageSize = 50;
-  const { data: securitiesData, isLoading } = useSecurities(page, pageSize);
+  const { data: securitiesData, isLoading, isError, error, refetch } = useSecurities(page, pageSize);
   const data = securitiesData?.items || [];
   const createSecurity = useCreateSecurity();
   const updateSecurity = useUpdateSecurity();
@@ -179,7 +180,9 @@ export function SecuritiesPage() {
 
       <div className="rounded-xl border border-slate-800 bg-slate-900 p-4">
         <h2 className="mb-3 text-sm font-semibold text-slate-200">All Securities</h2>
-        {isLoading || !data ? (
+        {isError ? (
+          <DataLoadError message={error?.message} onRetry={() => refetch()} />
+        ) : isLoading || !data ? (
           <LoadingSpinner />
         ) : (
           <>

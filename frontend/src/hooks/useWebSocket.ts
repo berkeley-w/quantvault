@@ -1,6 +1,10 @@
 import { useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
+const MAX_RECONNECT_ATTEMPTS = 5;
+const INITIAL_RECONNECT_MS = 3000;
+const MAX_RECONNECT_MS = 60000;
+
 interface WebSocketEvent {
   type: string;
   data: any;
@@ -9,6 +13,7 @@ interface WebSocketEvent {
 export function useWebSocket() {
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<number | null>(null);
+  const reconnectCountRef = useRef(0);
   const qc = useQueryClient();
 
   useEffect(() => {
@@ -31,7 +36,7 @@ export function useWebSocket() {
         wsRef.current = ws;
 
         ws.onopen = () => {
-          console.log("WebSocket connected");
+          reconnectCountRef.current = 0;
           if (reconnectTimeoutRef.current) {
             clearTimeout(reconnectTimeoutRef.current);
             reconnectTimeoutRef.current = null;
@@ -47,16 +52,24 @@ export function useWebSocket() {
           }
         };
 
-        ws.onerror = (error) => {
-          console.error("WebSocket error:", error);
+        ws.onerror = () => {
+          // Avoid console spam; close handler will run and handle reconnect
         };
 
         ws.onclose = () => {
-          console.log("WebSocket disconnected, reconnecting...");
-          // Reconnect after 3 seconds
+          wsRef.current = null;
+          if (reconnectCountRef.current >= MAX_RECONNECT_ATTEMPTS) {
+            return;
+          }
+          reconnectCountRef.current += 1;
+          const delay = Math.min(
+            INITIAL_RECONNECT_MS * Math.pow(2, reconnectCountRef.current - 1),
+            MAX_RECONNECT_MS
+          );
           reconnectTimeoutRef.current = window.setTimeout(() => {
+            reconnectTimeoutRef.current = null;
             connect();
-          }, 3000);
+          }, delay);
         };
       } catch (error) {
         console.error("Failed to create WebSocket:", error);

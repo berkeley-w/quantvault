@@ -1,0 +1,12 @@
+# Render Blueprint: single web service (backend serves API + frontend)
+# In Dashboard → Environment: set JWT_SECRET (required). For persistent data, add DATABASE_URL (Postgres).
+services:
+  - type: web
+    name: quantvault
+    runtime: python
+    plan: free
+    buildCommand: pip install -r backend/requirements.txt && cd frontend && npm ci && npm run build
+    startCommand: cd backend && python start.py
+    envVars:
+      - key: JWT_SECRET
+        generateValue: true

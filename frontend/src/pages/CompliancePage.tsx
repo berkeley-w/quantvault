@@ -2,13 +2,14 @@ import { useState } from "react";
 import { useTrades, useRejectTrade, useReinstateTrade } from "../hooks/useTrades";
 import { DataTable } from "../components/shared/DataTable";
 import { LoadingSpinner } from "../components/shared/LoadingSpinner";
+import { DataLoadError } from "../components/shared/DataLoadError";
 import { formatCurrency } from "../lib/formatters";
 
 export function CompliancePage() {
-  const { data: active, isLoading: loadingActive } = useTrades({
+  const { data: active, isLoading: loadingActive, isError: errorActive, error: errActive, refetch: refetchActive } = useTrades({
     status: "ACTIVE",
   });
-  const { data: rejected, isLoading: loadingRejected } = useTrades({
+  const { data: rejected, isLoading: loadingRejected, isError: errorRejected, error: errRejected, refetch: refetchRejected } = useTrades({
     status: "REJECTED",
   });
   const rejectTrade = useRejectTrade();
@@ -31,7 +32,9 @@ export function CompliancePage() {
         <h2 className="mb-3 text-sm font-semibold text-slate-200">
           Active Trades for Review
         </h2>
-        {loadingActive || !active ? (
+        {errorActive ? (
+          <DataLoadError message={errActive?.message} onRetry={() => refetchActive()} />
+        ) : loadingActive || !active ? (
           <LoadingSpinner />
         ) : (
           <DataTable
@@ -72,7 +75,9 @@ export function CompliancePage() {
         <h2 className="mb-3 text-sm font-semibold text-slate-200">
           Rejected Trades
         </h2>
-        {loadingRejected || !rejected ? (
+        {errorRejected ? (
+          <DataLoadError message={errRejected?.message} onRetry={() => refetchRejected()} />
+        ) : loadingRejected || !rejected ? (
           <LoadingSpinner />
         ) : (
           <DataTable

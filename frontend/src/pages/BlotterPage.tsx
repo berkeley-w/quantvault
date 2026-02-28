@@ -4,6 +4,7 @@ import { useCreateTrade, useTrades, useUpdateTrade, useDeleteTrade } from "../ho
 import { useTraderAccounts } from "../hooks/useTraderAccounts";
 import { DataTable } from "../components/shared/DataTable";
 import { LoadingSpinner } from "../components/shared/LoadingSpinner";
+import { DataLoadError } from "../components/shared/DataLoadError";
 import { formatCurrency } from "../lib/formatters";
 
 export function BlotterPage() {
@@ -12,7 +13,7 @@ export function BlotterPage() {
   const { data: traders } = useTraderAccounts();
   const [page, setPage] = useState(1);
   const pageSize = 50;
-  const { data: tradesData, isLoading } = useTrades({ status: "ACTIVE" }, page, pageSize);
+  const { data: tradesData, isLoading, isError, error, refetch } = useTrades({ status: "ACTIVE" }, page, pageSize);
   const trades = tradesData?.items || [];
   const createTrade = useCreateTrade();
   const updateTrade = useUpdateTrade();
@@ -228,7 +229,9 @@ export function BlotterPage() {
             Active Trades (editable)
           </h2>
         </div>
-        {isLoading || !trades ? (
+        {isError ? (
+          <DataLoadError message={error?.message} onRetry={() => refetch()} />
+        ) : isLoading || !trades ? (
           <LoadingSpinner />
         ) : (
           <>
